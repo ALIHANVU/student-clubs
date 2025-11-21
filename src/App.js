@@ -124,6 +124,8 @@ function LoginPage({ onLogin }) {
 
 // Заголовок приложения
 function Header({ user, onLogout }) {
+  const [showProfile, setShowProfile] = useState(false);
+  
   const roleNames = {
     main_admin: 'Главный администратор',
     club_admin: 'Администратор клуба',
@@ -137,8 +139,22 @@ function Header({ user, onLogout }) {
         <h1>🎓 Студенческие клубы</h1>
         <div className="user-info">
           <span className="user-role">{roleNames[user.role]}</span>
-          <span>{user.full_name}</span>
-          <button onClick={onLogout} className="btn-logout">Выйти</button>
+          <button 
+            className="user-name-btn" 
+            onClick={() => setShowProfile(!showProfile)}
+          >
+            {user.full_name} ▾
+          </button>
+          {showProfile && (
+            <div className="profile-dropdown">
+              <div className="profile-info">
+                <p><strong>{user.full_name}</strong></p>
+                <p style={{ fontSize: '0.875rem', color: '#64748b' }}>{user.email}</p>
+                <p style={{ fontSize: '0.875rem', color: '#64748b' }}>{roleNames[user.role]}</p>
+              </div>
+              <button onClick={onLogout} className="btn-logout-dropdown">Выйти</button>
+            </div>
+          )}
         </div>
       </div>
     </header>
@@ -147,36 +163,90 @@ function Header({ user, onLogout }) {
 
 // Панель главного администратора
 function MainAdminDashboard({ user }) {
-  const [activeTab, setActiveTab] = useState('faculties');
+  const [activeTab, setActiveTab] = useState('statistics');
+  const [stats, setStats] = useState({
+    clubs: 0,
+    users: 0,
+    events: 0,
+    faculties: 0
+  });
+
+  useEffect(() => {
+    loadStatistics();
+  }, []);
+
+  const loadStatistics = async () => {
+    const [clubs, users, events, faculties] = await Promise.all([
+      supabase.from('clubs').select('id', { count: 'exact', head: true }),
+      supabase.from('users').select('id', { count: 'exact', head: true }),
+      supabase.from('events').select('id', { count: 'exact', head: true }),
+      supabase.from('faculties').select('id', { count: 'exact', head: true })
+    ]);
+
+    setStats({
+      clubs: clubs.count || 0,
+      users: users.count || 0,
+      events: events.count || 0,
+      faculties: faculties.count || 0
+    });
+  };
 
   return (
     <div>
       <h2 style={{ marginBottom: '1.5rem', color: '#1e293b' }}>Панель управления</h2>
+      
       <div className="tabs">
+        <button className={`tab ${activeTab === 'statistics' ? 'active' : ''}`} onClick={() => setActiveTab('statistics')}>
+          📊 Статистика
+        </button>
         <button className={`tab ${activeTab === 'faculties' ? 'active' : ''}`} onClick={() => setActiveTab('faculties')}>
-          Факультеты и группы
+          🏛️ Факультеты
         </button>
         <button className={`tab ${activeTab === 'clubs' ? 'active' : ''}`} onClick={() => setActiveTab('clubs')}>
-          Клубы
+          🎭 Клубы
         </button>
         <button className={`tab ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>
-          Пользователи
+          👥 Пользователи
         </button>
         <button className={`tab ${activeTab === 'events' ? 'active' : ''}`} onClick={() => setActiveTab('events')}>
-          Мероприятия
+          📅 Мероприятия
         </button>
       </div>
 
-      {activeTab === 'faculties' && <FacultiesManager />}
-      {activeTab === 'clubs' && <ClubsManager />}
-      {activeTab === 'users' && <UsersManager />}
-      {activeTab === 'events' && <EventsManager userId={user.id} isMainAdmin={true} />}
+      {activeTab === 'statistics' && (
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-icon">🎭</div>
+            <div className="stat-number">{stats.clubs}</div>
+            <div className="stat-label">Клубов</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon">👥</div>
+            <div className="stat-number">{stats.users}</div>
+            <div className="stat-label">Пользователей</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon">📅</div>
+            <div className="stat-number">{stats.events}</div>
+            <div className="stat-label">Мероприятий</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon">🏛️</div>
+            <div className="stat-number">{stats.faculties}</div>
+            <div className="stat-label">Факультетов</div>
+          </div>
+        </div>
+      )}
+      {activeTab === 'faculties' && <FacultiesManager onUpdate={loadStatistics} />}
+      {activeTab === 'clubs' && <ClubsManager onUpdate={loadStatistics} />}
+      {activeTab === 'users' && <UsersManager onUpdate={loadStatistics} />}
+      {activeTab === 'events' && <EventsManager userId={user.id} isMainAdmin={true} onUpdate={loadStatistics} />}
     </div>
   );
 }
 
 // Управление факультетами
-function FacultiesManager() {
+function FacultiesManager({ onUpdate }) {
   const [faculties, setFaculties] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [newFacultyName, setNewFacultyName] = useState('');
@@ -196,6 +266,14 @@ function FacultiesManager() {
     setNewFacultyName('');
     setShowModal(false);
     loadFaculties();
+    onUpdate?.();
+  };
+
+  const deleteFaculty = async (id, name) => {
+    if (!window.confirm(`Удалить факультет "${name}"?`)) return;
+    await supabase.from('faculties').delete().eq('id', id);
+    loadFaculties();
+    onUpdate?.();
   };
 
   return (
@@ -213,7 +291,14 @@ function FacultiesManager() {
       ) : (
         <div className="cards-grid">
           {faculties.map(faculty => (
-            <div key={faculty.id} className="card">
+            <div key={faculty.id} className="card card-deletable">
+              <button 
+                className="delete-btn" 
+                onClick={() => deleteFaculty(faculty.id, faculty.name)}
+                title="Удалить факультет"
+              >
+                ×
+              </button>
               <h3>{faculty.name}</h3>
               <p>Факультет университета</p>
             </div>
@@ -246,17 +331,22 @@ function FacultiesManager() {
 }
 
 // Управление клубами
-function ClubsManager() {
+function ClubsManager({ onUpdate }) {
   const [clubs, setClubs] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [newClub, setNewClub] = useState({ name: '', description: '' });
+  const [selectedClub, setSelectedClub] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     loadClubs();
   }, []);
 
   const loadClubs = async () => {
-    const { data } = await supabase.from('clubs').select('*').order('name');
+    const { data } = await supabase
+      .from('clubs')
+      .select('*, club_subscriptions(count)')
+      .order('name');
     setClubs(data || []);
   };
 
@@ -266,29 +356,75 @@ function ClubsManager() {
     setNewClub({ name: '', description: '' });
     setShowModal(false);
     loadClubs();
+    onUpdate?.();
   };
+
+  const deleteClub = async (id, name) => {
+    if (!window.confirm(`Удалить клуб "${name}"? Это также удалит все связанные подписки и мероприятия.`)) return;
+    await supabase.from('clubs').delete().eq('id', id);
+    setSelectedClub(null);
+    loadClubs();
+    onUpdate?.();
+  };
+
+  const filteredClubs = clubs.filter(club => 
+    club.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    club.description?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h3>Студенческие клубы</h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem' }}>
+        <div style={{ flex: 1 }}>
+          <input
+            type="text"
+            placeholder="🔍 Поиск клубов..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="search-input"
+          />
+        </div>
         <button className="btn btn-blue" onClick={() => setShowModal(true)}>+ Создать клуб</button>
       </div>
 
-      {clubs.length === 0 ? (
+      {filteredClubs.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon">🎭</div>
-          <p>Пока нет клубов. Создайте первый!</p>
+          <p>{searchQuery ? 'Клубы не найдены' : 'Пока нет клубов. Создайте первый!'}</p>
         </div>
       ) : (
         <div className="cards-grid">
-          {clubs.map(club => (
-            <div key={club.id} className="card">
-              <h3>{club.name}</h3>
+          {filteredClubs.map(club => (
+            <div key={club.id} className="card card-interactive card-deletable" onClick={() => setSelectedClub(club)}>
+              <button 
+                className="delete-btn" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteClub(club.id, club.name);
+                }}
+                title="Удалить клуб"
+              >
+                ×
+              </button>
+              <div className="card-header">
+                <h3>{club.name}</h3>
+                <span className="badge">{club.club_subscriptions?.[0]?.count || 0} 👥</span>
+              </div>
               <p>{club.description || 'Без описания'}</p>
+              <div className="card-footer">
+                <span className="link-text">Подробнее →</span>
+              </div>
             </div>
           ))}
         </div>
+      )}
+
+      {selectedClub && (
+        <ClubDetailModal 
+          club={selectedClub} 
+          onClose={() => setSelectedClub(null)}
+          onDelete={deleteClub}
+        />
       )}
 
       {showModal && (
@@ -306,11 +442,11 @@ function ClubsManager() {
             </div>
             <div className="form-group">
               <label>Описание</label>
-              <input
-                type="text"
+              <textarea
                 value={newClub.description}
                 onChange={(e) => setNewClub({ ...newClub, description: e.target.value })}
                 placeholder="Краткое описание клуба"
+                rows="3"
               />
             </div>
             <div className="modal-buttons">
@@ -324,8 +460,99 @@ function ClubsManager() {
   );
 }
 
+// Модальное окно с деталями клуба
+function ClubDetailModal({ club, onClose, onDelete }) {
+  const [members, setMembers] = useState([]);
+  const [events, setEvents] = useState([]);
+
+  useEffect(() => {
+    loadClubDetails();
+  }, [club.id]);
+
+  const loadClubDetails = async () => {
+    const [membersData, eventsData] = await Promise.all([
+      supabase.from('club_subscriptions').select('*, users(full_name, email)').eq('club_id', club.id),
+      supabase.from('events').select('*').eq('club_id', club.id).order('event_date', { ascending: false })
+    ]);
+    
+    setMembers(membersData.data || []);
+    setEvents(eventsData.data || []);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal-large" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>{club.name}</h2>
+          <button className="close-btn" onClick={onClose}>×</button>
+        </div>
+        
+        <div className="club-detail-content">
+          <div className="detail-section">
+            <h3>📝 Описание</h3>
+            <p>{club.description || 'Описание отсутствует'}</p>
+          </div>
+
+          <div className="detail-section">
+            <h3>👥 Подписчики ({members.length})</h3>
+            {members.length === 0 ? (
+              <p className="text-muted">Пока нет подписчиков</p>
+            ) : (
+              <div className="members-list">
+                {members.slice(0, 5).map(member => (
+                  <div key={member.id} className="member-item">
+                    <span>{member.users.full_name}</span>
+                    <span className="text-muted">{member.users.email}</span>
+                  </div>
+                ))}
+                {members.length > 5 && (
+                  <p className="text-muted">и ещё {members.length - 5}...</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="detail-section">
+            <h3>📅 Мероприятия ({events.length})</h3>
+            {events.length === 0 ? (
+              <p className="text-muted">Пока нет мероприятий</p>
+            ) : (
+              <div className="events-list">
+                {events.slice(0, 3).map(event => (
+                  <div key={event.id} className="event-item">
+                    <strong>{event.title}</strong>
+                    <span className="text-muted">
+                      {new Date(event.event_date).toLocaleDateString('ru-RU')}
+                    </span>
+                  </div>
+                ))}
+                {events.length > 3 && (
+                  <p className="text-muted">и ещё {events.length - 3}...</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="modal-buttons">
+          <button 
+            className="btn btn-danger" 
+            onClick={() => {
+              onDelete(club.id, club.name);
+              onClose();
+            }}
+          >
+            🗑️ Удалить клуб
+          </button>
+          <button className="btn btn-outline" onClick={onClose}>Закрыть</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Управление пользователями
-function UsersManager() {
+function UsersManager({ onUpdate }) {
   const [users, setUsers] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [newUser, setNewUser] = useState({
@@ -334,6 +561,7 @@ function UsersManager() {
     full_name: '',
     role: 'student'
   });
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     loadUsers();
@@ -350,6 +578,14 @@ function UsersManager() {
     setNewUser({ email: '', password_hash: '', full_name: '', role: 'student' });
     setShowModal(false);
     loadUsers();
+    onUpdate?.();
+  };
+
+  const deleteUser = async (id, name) => {
+    if (!window.confirm(`Удалить пользователя "${name}"?`)) return;
+    await supabase.from('users').delete().eq('id', id);
+    loadUsers();
+    onUpdate?.();
   };
 
   const roleNames = {
@@ -359,19 +595,38 @@ function UsersManager() {
     student: 'Студент'
   };
 
+  const filteredUsers = users.filter(user =>
+    user.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    user.email.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h3>Пользователи</h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem' }}>
+        <div style={{ flex: 1 }}>
+          <input
+            type="text"
+            placeholder="🔍 Поиск пользователей..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="search-input"
+          />
+        </div>
         <button className="btn btn-blue" onClick={() => setShowModal(true)}>+ Добавить пользователя</button>
       </div>
 
-      {users.map(user => (
+      {filteredUsers.map(user => (
         <div key={user.id} className="list-item">
           <div className="list-item-content">
             <h4>{user.full_name}</h4>
             <p>{user.email} • {roleNames[user.role]}</p>
           </div>
+          <button 
+            className="btn btn-danger btn-sm" 
+            onClick={() => deleteUser(user.id, user.full_name)}
+          >
+            🗑️ Удалить
+          </button>
         </div>
       ))}
 
@@ -431,9 +686,10 @@ function UsersManager() {
 }
 
 // Управление мероприятиями
-function EventsManager({ userId, isMainAdmin = false, clubId = null }) {
+function EventsManager({ userId, isMainAdmin = false, clubId = null, onUpdate }) {
   const [events, setEvents] = useState([]);
   const [showModal, setShowModal] = useState(false);
+  const [filter, setFilter] = useState('all'); // all, upcoming, past
   const [newEvent, setNewEvent] = useState({
     title: '',
     description: '',
@@ -444,7 +700,7 @@ function EventsManager({ userId, isMainAdmin = false, clubId = null }) {
 
   useEffect(() => {
     loadEvents();
-  }, []);
+  }, [filter]);
 
   const loadEvents = async () => {
     let query = supabase.from('events').select('*, clubs(name)');
@@ -452,8 +708,16 @@ function EventsManager({ userId, isMainAdmin = false, clubId = null }) {
     if (clubId) {
       query = query.eq('club_id', clubId);
     }
+
+    const now = new Date().toISOString();
     
-    const { data } = await query.order('event_date', { ascending: false });
+    if (filter === 'upcoming') {
+      query = query.gte('event_date', now);
+    } else if (filter === 'past') {
+      query = query.lt('event_date', now);
+    }
+    
+    const { data } = await query.order('event_date', { ascending: filter === 'past' ? false : true });
     setEvents(data || []);
   };
 
@@ -476,12 +740,39 @@ function EventsManager({ userId, isMainAdmin = false, clubId = null }) {
     });
     setShowModal(false);
     loadEvents();
+    onUpdate?.();
+  };
+
+  const deleteEvent = async (id, title) => {
+    if (!window.confirm(`Удалить мероприятие "${title}"?`)) return;
+    await supabase.from('events').delete().eq('id', id);
+    loadEvents();
+    onUpdate?.();
   };
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h3>Мероприятия</h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem', flexWrap: 'wrap' }}>
+        <div className="filter-buttons">
+          <button 
+            className={`btn btn-sm ${filter === 'all' ? 'btn-blue' : 'btn-outline'}`}
+            onClick={() => setFilter('all')}
+          >
+            Все
+          </button>
+          <button 
+            className={`btn btn-sm ${filter === 'upcoming' ? 'btn-blue' : 'btn-outline'}`}
+            onClick={() => setFilter('upcoming')}
+          >
+            Предстоящие
+          </button>
+          <button 
+            className={`btn btn-sm ${filter === 'past' ? 'btn-blue' : 'btn-outline'}`}
+            onClick={() => setFilter('past')}
+          >
+            Прошедшие
+          </button>
+        </div>
         <button className="btn btn-blue" onClick={() => setShowModal(true)}>+ Создать мероприятие</button>
       </div>
 
@@ -491,18 +782,28 @@ function EventsManager({ userId, isMainAdmin = false, clubId = null }) {
           <p>Пока нет мероприятий</p>
         </div>
       ) : (
-        events.map(event => (
-          <div key={event.id} className="list-item">
-            <div className="list-item-content">
-              <h4>{event.title}</h4>
-              <p>
-                {new Date(event.event_date).toLocaleDateString('ru-RU')} • {event.location}
-                {event.is_university_wide && ' • Общеуниверситетское'}
-              </p>
-              <p style={{ marginTop: '0.5rem' }}>{event.description}</p>
+        events.map(event => {
+          const isPast = new Date(event.event_date) < new Date();
+          return (
+            <div key={event.id} className={`list-item ${isPast ? 'event-past' : ''}`}>
+              <div className="list-item-content">
+                <h4>{event.title}</h4>
+                <p>
+                  {new Date(event.event_date).toLocaleDateString('ru-RU')} • {event.location}
+                  {event.is_university_wide && ' • Общеуниверситетское'}
+                  {event.clubs && ` • ${event.clubs.name}`}
+                </p>
+                <p style={{ marginTop: '0.5rem' }}>{event.description}</p>
+              </div>
+              <button 
+                className="btn btn-danger btn-sm" 
+                onClick={() => deleteEvent(event.id, event.title)}
+              >
+                🗑️
+              </button>
             </div>
-          </div>
-        ))
+          );
+        })
       )}
 
       {showModal && (
@@ -520,11 +821,11 @@ function EventsManager({ userId, isMainAdmin = false, clubId = null }) {
             </div>
             <div className="form-group">
               <label>Описание</label>
-              <input
-                type="text"
+              <textarea
                 value={newEvent.description}
                 onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
                 placeholder="Краткое описание"
+                rows="3"
               />
             </div>
             <div className="form-group">
@@ -601,10 +902,10 @@ function ClubAdminDashboard({ user }) {
 
       <div className="tabs">
         <button className={`tab ${activeTab === 'events' ? 'active' : ''}`} onClick={() => setActiveTab('events')}>
-          Мероприятия
+          📅 Мероприятия
         </button>
         <button className={`tab ${activeTab === 'members' ? 'active' : ''}`} onClick={() => setActiveTab('members')}>
-          Подписчики
+          👥 Подписчики
         </button>
       </div>
 
@@ -685,10 +986,10 @@ function GroupLeaderDashboard({ user }) {
 
       <div className="tabs">
         <button className={`tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => setActiveTab('schedule')}>
-          Расписание
+          📅 Расписание
         </button>
         <button className={`tab ${activeTab === 'members' ? 'active' : ''}`} onClick={() => setActiveTab('members')}>
-          Студенты
+          👥 Студенты
         </button>
       </div>
 
@@ -747,6 +1048,12 @@ function ScheduleManager({ groupId }) {
     loadSchedule();
   };
 
+  const deleteLesson = async (id) => {
+    if (!window.confirm('Удалить занятие?')) return;
+    await supabase.from('schedules').delete().eq('id', id);
+    loadSchedule();
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -769,6 +1076,7 @@ function ScheduleManager({ groupId }) {
                 <th>Предмет</th>
                 <th>Аудитория</th>
                 <th>Преподаватель</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -779,6 +1087,15 @@ function ScheduleManager({ groupId }) {
                   <td><strong>{lesson.subject}</strong></td>
                   <td>{lesson.room}</td>
                   <td>{lesson.teacher}</td>
+                  <td>
+                    <button 
+                      className="btn-icon-delete" 
+                      onClick={() => deleteLesson(lesson.id)}
+                      title="Удалить"
+                    >
+                      🗑️
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -904,18 +1221,18 @@ function StudentDashboard({ user }) {
 
       <div className="tabs">
         <button className={`tab ${activeTab === 'clubs' ? 'active' : ''}`} onClick={() => setActiveTab('clubs')}>
-          Клубы
+          🎭 Клубы
         </button>
         <button className={`tab ${activeTab === 'events' ? 'active' : ''}`} onClick={() => setActiveTab('events')}>
-          Мероприятия
+          📅 Мероприятия
         </button>
         <button className={`tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => setActiveTab('schedule')}>
-          Расписание
+          📚 Расписание
         </button>
       </div>
 
       {activeTab === 'clubs' && <StudentClubs userId={user.id} />}
-      {activeTab === 'events' && <StudentEvents />}
+      {activeTab === 'events' && <StudentEvents userId={user.id} />}
       {activeTab === 'schedule' && <StudentSchedule userId={user.id} />}
     </div>
   );
@@ -925,13 +1242,17 @@ function StudentDashboard({ user }) {
 function StudentClubs({ userId }) {
   const [clubs, setClubs] = useState([]);
   const [myClubs, setMyClubs] = useState([]);
+  const [selectedClub, setSelectedClub] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     loadClubs();
   }, []);
 
   const loadClubs = async () => {
-    const { data: allClubs } = await supabase.from('clubs').select('*');
+    const { data: allClubs } = await supabase
+      .from('clubs')
+      .select('*, club_subscriptions(count)');
     const { data: subscriptions } = await supabase
       .from('club_subscriptions')
       .select('club_id')
@@ -957,54 +1278,208 @@ function StudentClubs({ userId }) {
     loadClubs();
   };
 
+  const filteredClubs = clubs.filter(club => 
+    club.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    club.description?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div>
-      <h3 style={{ marginBottom: '1rem' }}>Студенческие клубы</h3>
-      {clubs.length === 0 ? (
+      <div style={{ marginBottom: '1rem' }}>
+        <input
+          type="text"
+          placeholder="🔍 Поиск клубов..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="search-input"
+        />
+      </div>
+
+      {filteredClubs.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon">🎭</div>
-          <p>Пока нет клубов</p>
+          <p>{searchQuery ? 'Клубы не найдены' : 'Пока нет клубов'}</p>
         </div>
       ) : (
         <div className="cards-grid">
-          {clubs.map(club => (
-            <div key={club.id} className="card">
-              <h3>{club.name}</h3>
-              <p>{club.description || 'Без описания'}</p>
-              <button
-                className={`btn ${myClubs.includes(club.id) ? 'btn-outline' : 'btn-blue'}`}
-                style={{ marginTop: '1rem', width: '100%' }}
-                onClick={() => toggleSubscription(club.id)}
+          {filteredClubs.map(club => {
+            const isSubscribed = myClubs.includes(club.id);
+            return (
+              <div 
+                key={club.id} 
+                className={`card card-interactive ${isSubscribed ? 'card-subscribed' : ''}`}
+                onClick={() => setSelectedClub(club)}
               >
-                {myClubs.includes(club.id) ? '✓ Подписан' : 'Подписаться'}
-              </button>
-            </div>
-          ))}
+                <div className="card-header">
+                  <h3>{club.name}</h3>
+                  <span className="badge">{club.club_subscriptions?.[0]?.count || 0} 👥</span>
+                </div>
+                <p>{club.description || 'Без описания'}</p>
+                <button
+                  className={`btn ${isSubscribed ? 'btn-outline' : 'btn-blue'}`}
+                  style={{ marginTop: '1rem', width: '100%' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleSubscription(club.id);
+                  }}
+                >
+                  {isSubscribed ? '✓ Подписан' : 'Подписаться'}
+                </button>
+              </div>
+            );
+          })}
         </div>
+      )}
+
+      {selectedClub && (
+        <StudentClubDetailModal 
+          club={selectedClub} 
+          onClose={() => setSelectedClub(null)}
+          isSubscribed={myClubs.includes(selectedClub.id)}
+          onToggleSubscription={() => {
+            toggleSubscription(selectedClub.id);
+            setSelectedClub(null);
+          }}
+        />
       )}
     </div>
   );
 }
 
-// Мероприятия для студента
-function StudentEvents() {
+// Модальное окно с деталями клуба для студента
+function StudentClubDetailModal({ club, onClose, isSubscribed, onToggleSubscription }) {
   const [events, setEvents] = useState([]);
 
   useEffect(() => {
-    loadEvents();
+    loadClubEvents();
+  }, [club.id]);
+
+  const loadClubEvents = async () => {
+    const { data } = await supabase
+      .from('events')
+      .select('*')
+      .eq('club_id', club.id)
+      .gte('event_date', new Date().toISOString())
+      .order('event_date', { ascending: true });
+    
+    setEvents(data || []);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal-large" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>{club.name}</h2>
+          <button className="close-btn" onClick={onClose}>×</button>
+        </div>
+        
+        <div className="club-detail-content">
+          <div className="detail-section">
+            <h3>📝 Описание</h3>
+            <p>{club.description || 'Описание отсутствует'}</p>
+          </div>
+
+          <div className="detail-section">
+            <h3>📅 Предстоящие мероприятия ({events.length})</h3>
+            {events.length === 0 ? (
+              <p className="text-muted">Пока нет запланированных мероприятий</p>
+            ) : (
+              <div className="events-list">
+                {events.map(event => (
+                  <div key={event.id} className="event-item">
+                    <strong>{event.title}</strong>
+                    <span className="text-muted">
+                      {new Date(event.event_date).toLocaleDateString('ru-RU')} • {event.location}
+                    </span>
+                    {event.description && <p className="text-muted">{event.description}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="modal-buttons">
+          <button 
+            className={`btn ${isSubscribed ? 'btn-outline' : 'btn-blue'}`}
+            onClick={onToggleSubscription}
+          >
+            {isSubscribed ? '✓ Отписаться' : 'Подписаться на клуб'}
+          </button>
+          <button className="btn btn-outline" onClick={onClose}>Закрыть</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Мероприятия для студента
+function StudentEvents({ userId }) {
+  const [events, setEvents] = useState([]);
+  const [filter, setFilter] = useState('all');
+  const [myClubs, setMyClubs] = useState([]);
+
+  useEffect(() => {
+    loadMyClubs();
   }, []);
 
-  const loadEvents = async () => {
+  useEffect(() => {
+    loadEvents();
+  }, [filter, myClubs]);
+
+  const loadMyClubs = async () => {
     const { data } = await supabase
+      .from('club_subscriptions')
+      .select('club_id')
+      .eq('student_id', userId);
+    setMyClubs(data?.map(s => s.club_id) || []);
+  };
+
+  const loadEvents = async () => {
+    let query = supabase
       .from('events')
       .select('*, clubs(name)')
       .order('event_date', { ascending: true });
+
+    const now = new Date().toISOString();
+
+    if (filter === 'upcoming') {
+      query = query.gte('event_date', now);
+    } else if (filter === 'my_clubs') {
+      if (myClubs.length === 0) {
+        setEvents([]);
+        return;
+      }
+      query = query.in('club_id', myClubs).gte('event_date', now);
+    }
+
+    const { data } = await query;
     setEvents(data || []);
   };
 
   return (
     <div>
-      <h3 style={{ marginBottom: '1rem' }}>Предстоящие мероприятия</h3>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <button 
+          className={`btn btn-sm ${filter === 'all' ? 'btn-blue' : 'btn-outline'}`}
+          onClick={() => setFilter('all')}
+        >
+          Все мероприятия
+        </button>
+        <button 
+          className={`btn btn-sm ${filter === 'upcoming' ? 'btn-blue' : 'btn-outline'}`}
+          onClick={() => setFilter('upcoming')}
+        >
+          Предстоящие
+        </button>
+        <button 
+          className={`btn btn-sm ${filter === 'my_clubs' ? 'btn-blue' : 'btn-outline'}`}
+          onClick={() => setFilter('my_clubs')}
+        >
+          Мои клубы
+        </button>
+      </div>
+
       {events.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon">📅</div>
