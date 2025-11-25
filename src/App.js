@@ -7,7 +7,6 @@ const AppContext = createContext();
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
 
   useEffect(() => {
@@ -38,7 +37,7 @@ function App() {
   if (!user) return <LoginPage onLogin={login} />;
 
   return (
-    <AppContext.Provider value={{ user, logout, sidebarOpen, setSidebarOpen, activeTab, setActiveTab }}>
+    <AppContext.Provider value={{ user, logout, activeTab, setActiveTab }}>
       <div className="app-layout">
         <Sidebar />
         <MainArea />
@@ -116,7 +115,7 @@ function LoginPage({ onLogin }) {
 // ========================================
 
 function Sidebar() {
-  const { user, logout, sidebarOpen, setSidebarOpen, activeTab, setActiveTab } = useContext(AppContext);
+  const { user, logout, activeTab, setActiveTab } = useContext(AppContext);
   const [showMenu, setShowMenu] = useState(false);
 
   const navItems = user.role === 'main_admin' ? [
@@ -148,7 +147,7 @@ function Sidebar() {
 
   return (
     <>
-      {/* Мобильный хедер - только заголовок и аватар */}
+      {/* Мобильный хедер */}
       <div className="mobile-header">
         <span className="mobile-title">{currentLabel}</span>
         <div className="mobile-user-btn" onClick={() => setShowMenu(!showMenu)}>
@@ -185,7 +184,7 @@ function Sidebar() {
           <div className="nav-section">
             <div className="nav-section-title">Меню</div>
             {navItems.map(item => (
-              <div key={item.id} className={`nav-item ${activeTab === item.id ? 'active' : ''}`} onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}>
+              <div key={item.id} className={`nav-item ${activeTab === item.id ? 'active' : ''}`} onClick={() => setActiveTab(item.id)}>
                 <span className="nav-item-icon">{item.icon}</span>
                 <span>{item.label}</span>
               </div>
@@ -223,7 +222,6 @@ function MobileBottomNav() {
     { id: 'dashboard', icon: '📊', label: 'Главная' },
     { id: 'clubs', icon: '🎭', label: 'Клубы' },
     { id: 'events', icon: '📅', label: 'События' },
-    { id: 'schedule', icon: '📚', label: 'Расписание' },
     { id: 'users', icon: '👥', label: 'Ещё' },
   ] : user.role === 'student' ? [
     { id: 'dashboard', icon: '🏠', label: 'Главная' },
@@ -370,7 +368,7 @@ function StudentDashboard({ userId }) {
   const [myClubs, setMyClubs] = useState([]);
   const [upcomingEvents, setUpcomingEvents] = useState([]);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [userId]);
 
   const loadData = async () => {
     const { data: subs } = await supabase.from('club_subscriptions').select('*, clubs(name, description)').eq('student_id', userId);
@@ -391,7 +389,7 @@ function StudentDashboard({ userId }) {
     <>
       <PageHeader title="🏠 Главная" />
       <div className="page-content">
-        <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+        <div className="stats-grid">
           <StatCard icon="🎭" color="blue" value={myClubs.length} label="Моих клубов" />
           <StatCard icon="📅" color="orange" value={upcomingEvents.length} label="Ближайших событий" />
         </div>
@@ -442,12 +440,11 @@ function ClubsPage({ canEdit, userId }) {
   const [clubs, setClubs] = useState([]);
   const [myClubs, setMyClubs] = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [selectedClub, setSelectedClub] = useState(null);
   const [newClub, setNewClub] = useState({ name: '', description: '' });
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
 
-  useEffect(() => { loadClubs(); }, []);
+  useEffect(() => { loadClubs(); }, [userId]);
 
   const loadClubs = async () => {
     const { data } = await supabase.from('clubs').select('*, club_subscriptions(count)').order('name');
@@ -469,11 +466,11 @@ function ClubsPage({ canEdit, userId }) {
   const deleteClub = async (id) => {
     if (!window.confirm('Удалить клуб?')) return;
     await supabase.from('clubs').delete().eq('id', id);
-    setSelectedClub(null);
     loadClubs();
   };
 
-  const toggleSub = async (clubId) => {
+  const toggleSub = async (clubId, e) => {
+    e.stopPropagation();
     if (myClubs.includes(clubId)) {
       await supabase.from('club_subscriptions').delete().eq('club_id', clubId).eq('student_id', userId);
     } else {
@@ -503,7 +500,7 @@ function ClubsPage({ canEdit, userId }) {
             {filtered.map(club => {
               const isMy = myClubs.includes(club.id);
               return (
-                <div key={club.id} className={`card card-clickable ${isMy ? 'card-subscribed' : ''}`} onClick={() => setSelectedClub(club)}>
+                <div key={club.id} className={`card ${isMy ? 'card-subscribed' : ''}`}>
                   <div className="card-header">
                     <div className={`card-icon ${isMy ? 'subscribed' : ''}`}>🎭</div>
                     <div className="card-info">
@@ -514,6 +511,263 @@ function ClubsPage({ canEdit, userId }) {
                       </div>
                     </div>
                   </div>
-                  {!canEdit && (
-                    <div className="card-footer">
-                      <button className={`btn btn-sm ${isMy ? 'btn-secondary' : 'btn-primary'}`} onClick={(e) => {
+                  <div className="card-footer">
+                    {!canEdit ? (
+                      <button className={`btn btn-sm btn-full ${isMy ? 'btn-secondary' : 'btn-primary'}`} onClick={(e) => toggleSub(club.id, e)}>
+                        {isMy ? 'Отписаться' : 'Подписаться'}
+                      </button>
+                    ) : (
+                      <button className="btn btn-sm btn-danger" onClick={() => deleteClub(club.id)}>Удалить</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {showModal && (
+          <div className="modal-overlay" onClick={() => setShowModal(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3 className="modal-title">Создать клуб</h3>
+                <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
+              </div>
+              <div className="modal-body">
+                <div className="form-field">
+                  <label className="form-label">Название</label>
+                  <input className="form-input" value={newClub.name} onChange={(e) => setNewClub({ ...newClub, name: e.target.value })} placeholder="Название клуба" />
+                </div>
+                <div className="form-field">
+                  <label className="form-label">Описание</label>
+                  <textarea className="form-input" value={newClub.description} onChange={(e) => setNewClub({ ...newClub, description: e.target.value })} placeholder="Описание клуба" />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Отмена</button>
+                <button className="btn btn-primary" onClick={addClub}>Создать</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ========================================
+// СТРАНИЦА МЕРОПРИЯТИЙ
+// ========================================
+
+function EventsPage({ canEdit, userId }) {
+  const [events, setEvents] = useState([]);
+  const [showModal, setShowModal] = useState(false);
+  const [newEvent, setNewEvent] = useState({ title: '', description: '', event_date: '', location: '', is_university_wide: false });
+  const [search, setSearch] = useState('');
+
+  useEffect(() => { loadEvents(); }, []);
+
+  const loadEvents = async () => {
+    const { data } = await supabase.from('events').select('*, clubs(name)').order('event_date', { ascending: false });
+    setEvents(data || []);
+  };
+
+  const addEvent = async () => {
+    if (!newEvent.title.trim() || !newEvent.event_date) return;
+    await supabase.from('events').insert({ ...newEvent, created_by: userId });
+    setNewEvent({ title: '', description: '', event_date: '', location: '', is_university_wide: false });
+    setShowModal(false);
+    loadEvents();
+  };
+
+  const deleteEvent = async (id) => {
+    if (!window.confirm('Удалить мероприятие?')) return;
+    await supabase.from('events').delete().eq('id', id);
+    loadEvents();
+  };
+
+  const filtered = events.filter(e => e.title.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <>
+      <PageHeader title="📅 Мероприятия" action={canEdit && <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ Создать</button>} search={search} onSearch={setSearch} />
+      <div className="page-content">
+        {filtered.length === 0 ? <EmptyState icon="📅" title="Нет мероприятий" text="Создайте первое мероприятие" /> : (
+          <div className="cards-grid">
+            {filtered.map(event => (
+              <div key={event.id} className="card">
+                <div className="card-header">
+                  <div className="card-icon">📅</div>
+                  <div className="card-info">
+                    <div className="card-title">{event.title}</div>
+                    <div className="card-description">{event.description || 'Без описания'}</div>
+                    <div className="card-meta">
+                      <span className="card-meta-item">📍 {event.location}</span>
+                      <span className="card-meta-item">🕒 {formatDate(event.event_date)}</span>
+                    </div>
+                  </div>
+                </div>
+                {canEdit && (
+                  <div className="card-footer">
+                    <button className="btn btn-sm btn-danger" onClick={() => deleteEvent(event.id)}>Удалить</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showModal && (
+          <div className="modal-overlay" onClick={() => setShowModal(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3 className="modal-title">Создать мероприятие</h3>
+                <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
+              </div>
+              <div className="modal-body">
+                <div className="form-field">
+                  <label className="form-label">Название</label>
+                  <input className="form-input" value={newEvent.title} onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })} placeholder="Название мероприятия" />
+                </div>
+                <div className="form-field">
+                  <label className="form-label">Описание</label>
+                  <textarea className="form-input" value={newEvent.description} onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })} placeholder="Описание" />
+                </div>
+                <div className="form-field">
+                  <label className="form-label">Дата и время</label>
+                  <input className="form-input" type="datetime-local" value={newEvent.event_date} onChange={(e) => setNewEvent({ ...newEvent, event_date: e.target.value })} />
+                </div>
+                <div className="form-field">
+                  <label className="form-label">Место</label>
+                  <input className="form-input" value={newEvent.location} onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })} placeholder="Место проведения" />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Отмена</button>
+                <button className="btn btn-primary" onClick={addEvent}>Создать</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ========================================
+// ОСТАЛЬНЫЕ СТРАНИЦЫ (заглушки)
+// ========================================
+
+function SchedulePage() {
+  return (
+    <>
+      <PageHeader title="📚 Расписание" />
+      <div className="page-content">
+        <EmptyState icon="📚" title="Расписание" text="Раздел в разработке" />
+      </div>
+    </>
+  );
+}
+
+function FacultiesPage() {
+  return (
+    <>
+      <PageHeader title="🏛️ Факультеты" />
+      <div className="page-content">
+        <EmptyState icon="🏛️" title="Факультеты" text="Раздел в разработке" />
+      </div>
+    </>
+  );
+}
+
+function GroupsPage() {
+  return (
+    <>
+      <PageHeader title="👨‍🎓 Группы" />
+      <div className="page-content">
+        <EmptyState icon="👨‍🎓" title="Группы" text="Раздел в разработке" />
+      </div>
+    </>
+  );
+}
+
+function UsersPage() {
+  return (
+    <>
+      <PageHeader title="👥 Пользователи" />
+      <div className="page-content">
+        <EmptyState icon="👥" title="Пользователи" text="Раздел в разработке" />
+      </div>
+    </>
+  );
+}
+
+// ========================================
+// ВСПОМОГАТЕЛЬНЫЕ КОМПОНЕНТЫ
+// ========================================
+
+function PageHeader({ title, action, search, onSearch }) {
+  return (
+    <div className="page-header">
+      <h1 className="page-title">{title}</h1>
+      <div className="page-actions">
+        {onSearch && (
+          <div className="search-box">
+            <span className="search-box-icon">🔍</span>
+            <input type="text" placeholder="Поиск..." value={search} onChange={(e) => onSearch(e.target.value)} />
+          </div>
+        )}
+        {action}
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ icon, color, value, label }) {
+  return (
+    <div className="stat-card">
+      <div className={`stat-icon ${color}`}>{icon}</div>
+      <div className="stat-content">
+        <div className="stat-value">{value}</div>
+        <div className="stat-label">{label}</div>
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, children }) {
+  return (
+    <div className="section">
+      <div className="section-header">
+        <h3 className="section-title">{title}</h3>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function EmptyState({ icon, title, text, small }) {
+  return (
+    <div className={`empty-state ${small ? 'empty-state-small' : ''}`}>
+      <div className="empty-state-icon">{icon}</div>
+      {title && <div className="empty-state-title">{title}</div>}
+      {text && <div className="empty-state-text">{text}</div>}
+    </div>
+  );
+}
+
+// ========================================
+// УТИЛИТЫ
+// ========================================
+
+function formatDate(dateString) {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function getRoleName(role) {
+  const names = { main_admin: 'Админ', club_admin: 'Клуб', group_leader: 'Староста', student: 'Студент' };
+  return names[role] || role;
+}
+
+export default App;
