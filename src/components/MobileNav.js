@@ -1,27 +1,18 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { NAV_ITEMS, TAB_BAR_ITEMS, ROLE_NAMES } from '../utils/constants';
+import { TAB_BAR_ITEMS, ROLE_NAMES } from '../utils/constants';
 import { getInitials } from '../utils/helpers';
 import { Overlay } from './UI';
 
 /**
- * Mobile Header Component - С‡РёСЃС‚С‹Р№ Р·Р°РіРѕР»РѕРІРѕРє РїРѕ С†РµРЅС‚СЂСѓ
+ * Mobile Header Component - пустой, только safe area
  */
 export function MobileHeader() {
-  const { user, activeTab } = useApp();
-
-  const navItems = NAV_ITEMS[user.role] || NAV_ITEMS.student;
-  const currentLabel = navItems.find(i => i.id === activeTab)?.label || 'UniClub';
-
-  return (
-    <header className="mobile-header">
-      <span className="mobile-title">{currentLabel}</span>
-    </header>
-  );
+  return <div className="mobile-header" />;
 }
 
 /**
- * Mobile Tab Bar Component (iOS Style) - СЃ РїСЂРѕС„РёР»РµРј РІ РєРѕРЅС†Рµ
+ * Mobile Tab Bar Component (iOS Style - Floating)
  */
 export function TabBar() {
   const { user, activeTab, setActiveTab, logout } = useApp();
@@ -33,7 +24,7 @@ export function TabBar() {
 
   return (
     <>
-      {/* Profile Modal */}
+      {/* Profile Sheet */}
       {showProfile && (
         <>
           <Overlay visible={showProfile} onClick={() => setShowProfile(false)} />
@@ -45,8 +36,8 @@ export function TabBar() {
               <div className="profile-sheet-email">{user.email}</div>
               <div className="profile-sheet-role">{roleName}</div>
               <button className="profile-sheet-logout" onClick={logout}>
-                <span>рџљЄ</span>
-                <span>Р’С‹Р№С‚Рё РёР· Р°РєРєР°СѓРЅС‚Р°</span>
+                <span>🚪</span>
+                <span>Выйти</span>
               </button>
             </div>
           </div>
@@ -72,7 +63,7 @@ export function TabBar() {
             onClick={() => setShowProfile(!showProfile)}
           >
             <div className="tab-bar-avatar">{initials}</div>
-            <span className="tab-bar-item-label">РџСЂРѕС„РёР»СЊ</span>
+            <span className="tab-bar-item-label">Профиль</span>
           </div>
         </div>
       </nav>
