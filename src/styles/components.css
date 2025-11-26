@@ -1123,12 +1123,24 @@ textarea.form-input {
 .loading-screen {
   min-height: 100vh;
   min-height: 100dvh;
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: var(--space-lg);
   background: var(--bg-primary);
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+
+.inline-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4xl) 0;
+  width: 100%;
 }
 
 .loading-spinner {
