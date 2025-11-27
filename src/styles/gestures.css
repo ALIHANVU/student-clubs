@@ -1,0 +1,535 @@
+/* ========================================
+   GESTURES & ANIMATIONS
+   ======================================== */
+
+/* === SWIPEABLE CARD === */
+
+.swipeable-container {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+}
+
+.swipeable-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.swipeable-action {
+  width: 70px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.swipeable-action:active {
+  opacity: 0.8;
+}
+
+.swipeable-action.delete {
+  background: var(--color-red);
+}
+
+.swipeable-action.edit {
+  background: var(--color-blue);
+}
+
+.swipeable-action.blue {
+  background: var(--color-blue);
+}
+
+.swipeable-action.green {
+  background: var(--color-green);
+}
+
+.swipeable-action.orange {
+  background: var(--color-orange);
+}
+
+.swipeable-content {
+  position: relative;
+  background: var(--bg-glass-thick);
+  transition: transform 0.2s var(--ease-smooth);
+  z-index: 1;
+}
+
+/* === PAGE TRANSITIONS === */
+
+.page-transition {
+  animation: pageEnter 0.3s var(--ease-smooth);
+}
+
+.page-transition.forward {
+  animation-name: pageEnterForward;
+}
+
+.page-transition.backward {
+  animation-name: pageEnterBackward;
+}
+
+@keyframes pageEnterForward {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pageEnterBackward {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* === ANIMATED LIST === */
+
+.animated-list-item {
+  animation: listItemEnter 0.4s var(--ease-spring) backwards;
+}
+
+@keyframes listItemEnter {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.staggered-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.staggered-item {
+  animation: staggerEnter 0.4s var(--ease-spring) backwards;
+}
+
+@keyframes staggerEnter {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* === IMPROVED SKELETONS === */
+
+.skeleton {
+  background: linear-gradient(
+    90deg, 
+    var(--fill-tertiary) 0%, 
+    var(--fill-secondary) 20%, 
+    var(--fill-tertiary) 40%, 
+    var(--fill-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeletonShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton-text {
+  display: block;
+  margin-bottom: var(--space-xs);
+}
+
+.skeleton-circle {
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.skeleton-rect {
+  display: block;
+}
+
+.skeleton-card {
+  background: var(--bg-glass-thick);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 0.5px solid var(--separator);
+}
+
+.skeleton-card-header {
+  padding: var(--space-lg);
+  display: flex;
+  gap: var(--space-md);
+  align-items: flex-start;
+}
+
+.skeleton-card-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.skeleton-card-footer {
+  padding: var(--space-md) var(--space-lg);
+  border-top: 0.5px solid var(--separator);
+  background: var(--fill-quaternary);
+}
+
+.skeleton-list {
+  background: var(--bg-glass-thick);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 0.5px solid var(--separator);
+}
+
+.skeleton-list-item {
+  padding: var(--space-md) var(--space-lg);
+  display: flex;
+  gap: var(--space-md);
+  align-items: center;
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.skeleton-list-item:last-child {
+  border-bottom: none;
+}
+
+.skeleton-list-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.skeleton-stat {
+  background: var(--bg-glass-thick);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  border: 0.5px solid var(--separator);
+}
+
+.skeleton-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.skeleton-schedule-item {
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  background: var(--bg-glass-thick);
+  border-radius: var(--radius-md);
+  border: 0.5px solid var(--separator);
+}
+
+.skeleton-schedule-time {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 50px;
+}
+
+.skeleton-schedule-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.skeleton-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-2xl);
+  background: var(--bg-glass-thick);
+  border-radius: var(--radius-xl);
+  border: 0.5px solid var(--separator);
+}
+
+/* === OFFLINE BANNER === */
+
+.offline-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--font-sm);
+  font-weight: 500;
+  animation: slideDown 0.3s var(--ease-smooth);
+}
+
+.offline-banner.offline {
+  background: var(--color-red-light);
+  color: var(--color-red);
+}
+
+.offline-banner.cached {
+  background: var(--color-orange-light);
+  color: var(--color-orange);
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.offline-banner-icon {
+  font-size: 14px;
+}
+
+/* === ACTION SHEET === */
+
+.action-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s var(--ease-smooth);
+  padding: var(--space-md);
+  padding-bottom: calc(var(--safe-bottom) + var(--space-md));
+}
+
+.action-sheet {
+  background: var(--bg-elevated);
+  border-radius: var(--radius-xl);
+  width: 100%;
+  max-width: 400px;
+  overflow: hidden;
+  animation: slideUp 0.3s var(--ease-spring);
+}
+
+.action-sheet-handle {
+  width: 36px;
+  height: 5px;
+  background: var(--fill-secondary);
+  border-radius: var(--radius-full);
+  margin: var(--space-sm) auto;
+}
+
+.action-sheet-title {
+  text-align: center;
+  font-size: var(--font-sm);
+  color: var(--text-tertiary);
+  padding: var(--space-sm) var(--space-lg);
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.action-sheet-actions {
+  padding: var(--space-xs);
+}
+
+.action-sheet-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  background: transparent;
+  border: none;
+  font-size: var(--font-md);
+  font-weight: 500;
+  color: var(--color-blue);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.action-sheet-item:active {
+  background: var(--fill-tertiary);
+}
+
+.action-sheet-item.destructive {
+  color: var(--color-red);
+}
+
+.action-sheet-icon {
+  font-size: 20px;
+}
+
+.action-sheet-cancel {
+  width: calc(100% - var(--space-md));
+  margin: var(--space-xs) auto var(--space-sm);
+  padding: var(--space-lg);
+  background: var(--fill-tertiary);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--color-blue);
+  cursor: pointer;
+}
+
+.action-sheet-cancel:active {
+  opacity: 0.8;
+}
+
+/* === TOUCH FEEDBACK === */
+
+.touch-feedback {
+  transition: transform 0.1s, opacity 0.1s;
+}
+
+.touch-feedback:active {
+  transform: scale(0.97);
+  opacity: 0.9;
+}
+
+/* === PAGE WRAPPER ANIMATIONS === */
+
+.page-wrapper {
+  animation: pageEnter 0.3s var(--ease-smooth);
+}
+
+.page-wrapper.forward {
+  animation-name: pageSlideInRight;
+}
+
+.page-wrapper.backward {
+  animation-name: pageSlideInLeft;
+}
+
+@keyframes pageSlideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pageSlideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* === GLOBAL OFFLINE INDICATOR === */
+
+.global-offline-indicator {
+  position: fixed;
+  bottom: calc(var(--tab-bar-height) + var(--safe-bottom) + 80px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-full);
+  font-size: var(--font-sm);
+  font-weight: 500;
+  z-index: 1000;
+  animation: fadeInUp 0.3s var(--ease-spring);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+@media (min-width: 769px) {
+  .global-offline-indicator {
+    bottom: var(--space-xl);
+    left: calc(var(--sidebar-width) + 50%);
+    transform: translateX(-50%);
+  }
+}
+
+/* === SPRING ANIMATIONS === */
+
+@keyframes springBounce {
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes springPop {
+  0% { transform: scale(0.5); opacity: 0; }
+  70% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.spring-enter {
+  animation: springBounce 0.4s var(--ease-spring);
+}
+
+.spring-pop {
+  animation: springPop 0.3s var(--ease-spring);
+}
+
+/* === CARD PRESS EFFECT === */
+
+.card-pressable {
+  transition: transform 0.15s var(--ease-smooth), box-shadow 0.15s;
+}
+
+.card-pressable:active {
+  transform: scale(0.98);
+  box-shadow: var(--shadow-small);
+}
+
+/* === RIPPLE EFFECT === */
+
+.ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.ripple::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.3s, height 0.3s, opacity 0.3s;
+  opacity: 0;
+}
+
+.ripple:active::after {
+  width: 200%;
+  height: 200%;
+  opacity: 1;
+  transition: width 0s, height 0s, opacity 0s;
+}
