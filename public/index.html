@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1" />
+  
+  <!-- PWA Meta Tags -->
+  <meta name="theme-color" content="#007AFF" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0A84FF" media="(prefers-color-scheme: dark)" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="UniClub" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="application-name" content="UniClub" />
+  <meta name="msapplication-TileColor" content="#007AFF" />
+  <meta name="msapplication-config" content="/browserconfig.xml" />
+  
+  <!-- SEO -->
+  <meta name="description" content="UniClub — студенческая платформа для управления клубами, мероприятиями и расписанием" />
+  <meta name="keywords" content="студенты, клубы, мероприятия, расписание, университет" />
+  <meta name="author" content="UniClub" />
+  
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="UniClub — Студенческая платформа" />
+  <meta property="og:description" content="Управление студенческими клубами, мероприятиями и расписанием" />
+  <meta property="og:image" content="/icons/og-image.png" />
+  
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/manifest.json" />
+  
+  <!-- Favicons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  <!-- Apple Touch Icons -->
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
+  <link rel="apple-touch-icon" sizes="167x167" href="/icons/icon-167.png" />
+  
+  <!-- Apple Splash Screens -->
+  <link rel="apple-touch-startup-image" href="/splash/splash-1125x2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)" />
+  <link rel="apple-touch-startup-image" href="/splash/splash-1242x2688.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)" />
+  <link rel="apple-touch-startup-image" href="/splash/splash-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)" />
+  <link rel="apple-touch-startup-image" href="/splash/splash-1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" />
+  <link rel="apple-touch-startup-image" href="/splash/splash-1179x2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)" />
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  
+  <title>UniClub</title>
+  
+  <style>
+    /* Reset & Base */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #root { height: 100%; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
+      background: linear-gradient(180deg, #f5f5f7 0%, #e8e8ed 100%);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overscroll-behavior: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      body { 
+        background: linear-gradient(180deg, #1c1c1e 0%, #000000 100%); 
+      }
+    }
+    
+    /* Loading screen */
+    .app-loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: inherit;
+      z-index: 9999;
+    }
+    
+    .app-loading-logo {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    
+    .app-loading-logo svg {
+      width: 48px;
+      height: 48px;
+      stroke: white;
+      stroke-width: 1.5;
+      fill: none;
+    }
+    
+    .app-loading-text {
+      font-size: 15px;
+      font-weight: 500;
+      color: #8e8e93;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.8; }
+    }
+    
+    /* Hide loading when React mounts */
+    #root:not(:empty) + .app-loading {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <noscript>
+    <div style="padding: 40px; text-align: center;">
+      <h1>JavaScript отключён</h1>
+      <p>Включите JavaScript для работы UniClub</p>
+    </div>
+  </noscript>
+  
+  <div id="root"></div>
+  
+  <!-- Loading screen (показывается пока React загружается) -->
+  <div class="app-loading">
+    <div class="app-loading-logo">
+      <svg viewBox="0 0 24 24">
+        <path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-4h6v4M9 10h.01M15 10h.01M9 14h.01M15 14h.01" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="app-loading-text">Загрузка...</div>
+  </div>
+  
+  <!-- Register Service Worker -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js')
+          .then(function(registration) {
+            console.log('SW registered:', registration.scope);
+          })
+          .catch(function(error) {
+            console.log('SW registration failed:', error);
+          });
+      });
+    }
+  </script>
+</body>
+</html>
