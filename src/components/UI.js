@@ -129,7 +129,8 @@ export function Button({
   disabled = false,
   onClick,
   type = 'button',
-  className = ''
+  className = '',
+  style
 }) {
   const handleClick = (e) => {
     if (!disabled) {
@@ -153,6 +154,7 @@ export function Button({
       className={classes}
       onClick={handleClick}
       disabled={disabled}
+      style={style}
     >
       {children}
     </button>
@@ -335,10 +337,10 @@ export function StatsGrid({ children }) {
   return <div className="stats-grid">{children}</div>;
 }
 
-export function StatCard({ icon, value, label, loading }) {
+export function StatCard({ icon, color = 'blue', value, label, loading, delay = 0 }) {
   return (
-    <div className="stat-card">
-      <div className="stat-icon">{icon}</div>
+    <div className="stat-card" style={{ animationDelay: `${delay * 0.1}s` }}>
+      <div className={`stat-icon ${color}`}>{icon}</div>
       <div className="stat-value">{loading ? '—' : value}</div>
       <div className="stat-label">{label}</div>
     </div>
@@ -346,8 +348,24 @@ export function StatCard({ icon, value, label, loading }) {
 }
 
 /**
+ * Section
+ */
+export function Section({ title, children, delay = 0 }) {
+  return (
+    <div className="section" style={{ animationDelay: `${delay * 0.1}s` }}>
+      {title && <h3 className="section-title">{title}</h3>}
+      <div className="section-content">{children}</div>
+    </div>
+  );
+}
+
+/**
  * List Components
  */
+export function List({ children }) {
+  return <div className="list-section">{children}</div>;
+}
+
 export function ListSection({ children, header }) {
   return (
     <div className="list-section">
@@ -357,7 +375,7 @@ export function ListSection({ children, header }) {
   );
 }
 
-export function ListItem({ icon, title, subtitle, onClick, chevron = true }) {
+export function ListItem({ icon, title, subtitle, onClick, chevron = true, accessory }) {
   return (
     <div className="list-item" onClick={onClick}>
       {icon && <div className="list-item-icon">{icon}</div>}
@@ -365,6 +383,7 @@ export function ListItem({ icon, title, subtitle, onClick, chevron = true }) {
         <div className="list-item-title">{title}</div>
         {subtitle && <div className="list-item-subtitle">{subtitle}</div>}
       </div>
+      {accessory && <div className="list-item-accessory">{accessory}</div>}
       {chevron && <span className="list-item-chevron">›</span>}
     </div>
   );
