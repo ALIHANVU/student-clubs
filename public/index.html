@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#007AFF" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0A84FF" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="UniClub">
+  <meta name="description" content="Студенческая платформа для управления клубами и мероприятиями">
+  
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="icon" href="/favicon.ico">
+  
+  <title>UniClub</title>
+  
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    
+    /* iOS 26 Splash Screen with Liquid Glass */
+    #splash {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(145deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      transition: opacity 0.5s ease, visibility 0.5s ease;
+      overflow: hidden;
+    }
+    
+    #splash.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+    
+    /* Animated background orbs */
+    .splash-orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.6;
+      animation: orbFloat 8s ease-in-out infinite;
+    }
+    
+    .splash-orb-1 {
+      width: 300px;
+      height: 300px;
+      background: linear-gradient(135deg, #0A84FF, #5E5CE6);
+      top: -100px;
+      left: -100px;
+      animation-delay: 0s;
+    }
+    
+    .splash-orb-2 {
+      width: 250px;
+      height: 250px;
+      background: linear-gradient(135deg, #BF5AF2, #FF375F);
+      bottom: -80px;
+      right: -80px;
+      animation-delay: -4s;
+    }
+    
+    .splash-orb-3 {
+      width: 200px;
+      height: 200px;
+      background: linear-gradient(135deg, #30D158, #64D2FF);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      animation-delay: -2s;
+      opacity: 0.3;
+    }
+    
+    @keyframes orbFloat {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      25% { transform: translate(20px, -20px) scale(1.05); }
+      50% { transform: translate(-10px, 20px) scale(0.95); }
+      75% { transform: translate(-20px, -10px) scale(1.02); }
+    }
+    
+    /* Liquid Glass Logo Container */
+    .splash-logo-container {
+      position: relative;
+      z-index: 1;
+    }
+    
+    .splash-logo {
+      width: 140px;
+      height: 140px;
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(40px) saturate(180%);
+      -webkit-backdrop-filter: blur(40px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      animation: logoFloat 3s ease-in-out infinite;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .splash-logo::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 200%;
+      height: 100%;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.1),
+        transparent
+      );
+      animation: logoShine 3s ease-in-out infinite;
+    }
+    
+    @keyframes logoFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    
+    @keyframes logoShine {
+      0% { left: -100%; }
+      50%, 100% { left: 100%; }
+    }
+    
+    .splash-logo svg { width: 80px; height: 80px; }
+    
+    .splash-title {
+      margin-top: 28px;
+      font-size: 38px;
+      font-weight: 700;
+      color: white;
+      letter-spacing: -0.02em;
+      animation: fadeUp 0.8s ease 0.2s both;
+      text-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+    }
+    
+    .splash-subtitle {
+      margin-top: 8px;
+      font-size: 17px;
+      color: rgba(255, 255, 255, 0.7);
+      font-weight: 500;
+      animation: fadeUp 0.8s ease 0.4s both;
+    }
+    
+    /* iOS 26 style loader */
+    .splash-loader {
+      margin-top: 48px;
+      display: flex;
+      gap: 8px;
+      animation: fadeUp 0.8s ease 0.6s both;
+    }
+    
+    .splash-loader-dot {
+      width: 10px;
+      height: 10px;
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 50%;
+      animation: loaderBounce 1.4s ease-in-out infinite;
+    }
+    
+    .splash-loader-dot:nth-child(1) { animation-delay: 0s; }
+    .splash-loader-dot:nth-child(2) { animation-delay: 0.2s; }
+    .splash-loader-dot:nth-child(3) { animation-delay: 0.4s; }
+    
+    @keyframes loaderBounce {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+    
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* Dark/Light mode backgrounds */
+    @media (prefers-color-scheme: light) {
+      #splash {
+        background: linear-gradient(145deg, #E8EAED 0%, #D4D6DB 50%, #C0C4CC 100%);
+      }
+      .splash-orb { opacity: 0.4; }
+      .splash-title { color: #1a1a2e; text-shadow: none; }
+      .splash-subtitle { color: rgba(0, 0, 0, 0.6); }
+      .splash-loader-dot { background: rgba(0, 0, 0, 0.6); }
+      .splash-logo {
+        background: rgba(255, 255, 255, 0.8);
+        border-color: rgba(255, 255, 255, 0.5);
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- iOS 26 Splash Screen -->
+  <div id="splash">
+    <!-- Animated background orbs -->
+    <div class="splash-orb splash-orb-1"></div>
+    <div class="splash-orb splash-orb-2"></div>
+    <div class="splash-orb splash-orb-3"></div>
+    
+    <div class="splash-logo-container">
+      <div class="splash-logo">
+        <svg viewBox="0 0 512 512" fill="none">
+          <defs>
+            <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#0A84FF"/>
+              <stop offset="100%" stop-color="#BF5AF2"/>
+            </linearGradient>
+          </defs>
+          <path d="M156 140v160c0 55 44 100 100 100s100-45 100-100V140h-50v160c0 27-22 50-50 50s-50-23-50-50V140h-50z" fill="url(#g)"/>
+          <path d="M256 100l-80 40 80 40 80-40z" fill="url(#g)"/>
+          <rect x="246" y="160" width="20" height="50" fill="url(#g)"/>
+          <path d="M216 200v40c0 22 18 40 40 40s40-18 40-40v-40l-40 20z" fill="url(#g)"/>
+        </svg>
+      </div>
+    </div>
+    
+    <h1 class="splash-title">UniClub</h1>
+    <p class="splash-subtitle">Студенческие клубы</p>
+    
+    <div class="splash-loader">
+      <div class="splash-loader-dot"></div>
+      <div class="splash-loader-dot"></div>
+      <div class="splash-loader-dot"></div>
+    </div>
+  </div>
+  
+  <div id="root"></div>
+  
+  <script>
+    window.addEventListener('load', function() {
+      setTimeout(function() {
+        var splash = document.getElementById('splash');
+        if (splash) splash.classList.add('hidden');
+      }, 1800);
+    });
+  </script>
+</body>
+</html>

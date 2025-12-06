@@ -1,0 +1,16 @@
+PWA Icons Placeholder
+=====================
+
+You need to create the following icon files:
+- icon-72.png   (72x72)
+- icon-96.png   (96x96)
+- icon-128.png  (128x128)
+- icon-144.png  (144x144)
+- icon-152.png  (152x152)
+- icon-192.png  (192x192)
+- icon-384.png  (384x384)
+- icon-512.png  (512x512)
+- icon-32.png   (32x32) - favicon
+
+Use a graduation cap emoji 🎓 or create a custom logo.
+Tools like RealFaviconGenerator.net can help generate all sizes.
