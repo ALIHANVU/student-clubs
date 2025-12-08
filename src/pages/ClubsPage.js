@@ -1,5 +1,5 @@
 /**
- * ClubsPage — Оптимизированная
+ * ClubsPage — Исправленная с полными правами админа
  */
 import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import { supabase, invalidateCache } from '../utils/supabase';
@@ -18,18 +18,20 @@ export const ClubsPage = memo(function ClubsPage() {
   const [clubs, setClubs] = useState([]);
   const [myClubs, setMyClubs] = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [newClub, setNewClub] = useState({ name: '', description: '', icon: '🎭' });
+  const [editingClub, setEditingClub] = useState(null);
+  const [clubForm, setClubForm] = useState({ name: '', description: '', icon: '🎭' });
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
+  // Админ может всё
   const canEdit = user.role === 'main_admin' || user.role === 'club_admin';
 
   const loadClubs = useCallback(async () => {
     try {
       const [clubsRes, subsRes] = await Promise.all([
-        supabase.from('clubs').select('*, club_subscriptions(count)').order('name'),
+        supabase.from('clubs').select('*').order('name'),
         supabase.from('club_subscriptions').select('club_id').eq('student_id', user.id)
       ]);
       
@@ -50,53 +52,111 @@ export const ClubsPage = memo(function ClubsPage() {
     notify.success('Обновлено');
   }, [loadClubs, notify]);
 
-  const addClub = useCallback(async () => {
-    if (!newClub.name.trim()) return;
+  const openAddModal = useCallback(() => {
+    setEditingClub(null);
+    setClubForm({ name: '', description: '', icon: '🎭' });
+    setShowModal(true);
+  }, []);
+
+  const openEditModal = useCallback((club) => {
+    setEditingClub(club);
+    setClubForm({
+      name: club.name || '',
+      description: club.description || '',
+      icon: club.icon || '🎭'
+    });
+    setShowModal(true);
+    haptic.light();
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setShowModal(false);
+    setEditingClub(null);
+  }, []);
+
+  const saveClub = useCallback(async () => {
+    if (!clubForm.name.trim()) {
+      notify.error('Введите название клуба');
+      return;
+    }
+    
     setSubmitting(true);
     try {
-      await supabase.from('clubs').insert({ ...newClub, created_by: user.id });
+      const data = {
+        name: clubForm.name.trim(),
+        description: clubForm.description.trim(),
+        icon: clubForm.icon
+      };
+
+      if (editingClub) {
+        const { error } = await supabase.from('clubs').update(data).eq('id', editingClub.id);
+        if (error) throw error;
+        notify.success('Клуб обновлён');
+      } else {
+        const { error } = await supabase.from('clubs').insert({ ...data, created_by: user.id });
+        if (error) throw error;
+        notify.success('Клуб создан');
+      }
+
       invalidateCache('clubs');
-      setNewClub({ name: '', description: '', icon: '🎭' });
-      setShowModal(false);
+      closeModal();
       loadClubs();
-      notify.success('Клуб создан');
       haptic.success();
     } catch (error) {
-      notify.error('Ошибка создания');
+      console.error('Error:', error);
+      notify.error('Ошибка сохранения');
       haptic.error();
     } finally {
       setSubmitting(false);
     }
-  }, [newClub, user.id, loadClubs, notify]);
+  }, [clubForm, editingClub, user.id, loadClubs, notify, closeModal]);
 
-  const deleteClub = useCallback(async (id) => {
-    if (!window.confirm('Удалить этот клуб?')) return;
+  const deleteClub = useCallback(async (id, name, e) => {
+    e?.stopPropagation();
+    if (!window.confirm(`Удалить клуб "${name}"?`)) return;
+    
     try {
-      await supabase.from('clubs').delete().eq('id', id);
+      const { error } = await supabase.from('clubs').delete().eq('id', id);
+      if (error) throw error;
+      
       invalidateCache('clubs');
       loadClubs();
       notify.success('Клуб удалён');
       haptic.medium();
     } catch (error) {
+      console.error('Error:', error);
       notify.error('Ошибка удаления');
       haptic.error();
     }
   }, [loadClubs, notify]);
 
-  const toggleSubscription = useCallback(async (clubId, clubName) => {
+  const toggleSubscription = useCallback(async (clubId, clubName, e) => {
+    e?.stopPropagation();
     const isSubscribed = myClubs.includes(clubId);
+    
     try {
       if (isSubscribed) {
-        await supabase.from('club_subscriptions').delete().eq('club_id', clubId).eq('student_id', user.id);
+        const { error } = await supabase
+          .from('club_subscriptions')
+          .delete()
+          .eq('club_id', clubId)
+          .eq('student_id', user.id);
+        if (error) throw error;
+        
         setMyClubs(prev => prev.filter(id => id !== clubId));
-        notify.info(`Отписка от "${clubName}"`);
+        notify.info(`Вы отписались от "${clubName}"`);
       } else {
-        await supabase.from('club_subscriptions').insert({ club_id: clubId, student_id: user.id });
+        const { error } = await supabase
+          .from('club_subscriptions')
+          .insert({ club_id: clubId, student_id: user.id });
+        if (error) throw error;
+        
         setMyClubs(prev => [...prev, clubId]);
-        notify.success(`Подписка на "${clubName}"`);
+        notify.success(`Вы подписались на "${clubName}"`);
       }
       haptic.medium();
     } catch (error) {
+      console.error('Error:', error);
       notify.error('Ошибка');
       haptic.error();
     }
@@ -105,7 +165,9 @@ export const ClubsPage = memo(function ClubsPage() {
   // Мемоизированная фильтрация
   const filteredClubs = useMemo(() => {
     let result = clubs.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
-    if (filter === 'my') result = result.filter(c => myClubs.includes(c.id));
+    if (filter === 'my') {
+      result = result.filter(c => myClubs.includes(c.id));
+    }
     return result;
   }, [clubs, search, filter, myClubs]);
 
@@ -118,7 +180,7 @@ export const ClubsPage = memo(function ClubsPage() {
     <>
       <PageHeader 
         title="🎭 Клубы" 
-        action={canEdit && <Button variant="primary" onClick={() => setShowModal(true)}>+ Создать</Button>} 
+        action={canEdit && <Button variant="primary" onClick={openAddModal}>+ Создать</Button>} 
         search={search} 
         onSearch={setSearch} 
       />
@@ -127,7 +189,7 @@ export const ClubsPage = memo(function ClubsPage() {
         showSearch 
         searchValue={search} 
         onSearchChange={setSearch} 
-        actions={canEdit ? [{ icon: 'plus', onClick: () => setShowModal(true), primary: true }] : []} 
+        actions={canEdit ? [{ icon: 'plus', onClick: openAddModal, primary: true }] : []} 
       />
 
       <PullToRefresh onRefresh={handleRefresh}>
@@ -142,37 +204,61 @@ export const ClubsPage = memo(function ClubsPage() {
             <EmptyState 
               icon="🎭" 
               title="Нет клубов" 
-              text={filter === 'my' ? 'Вы ещё не подписаны' : 'Создайте первый клуб'} 
+              text={filter === 'my' ? 'Вы ещё не подписаны на клубы' : (search ? 'Ничего не найдено' : 'Создайте первый клуб')} 
+              action={canEdit && filter !== 'my' && !search && (
+                <Button variant="primary" onClick={openAddModal}>+ Создать клуб</Button>
+              )}
             />
           ) : (
             <div className="cards-grid">
               {filteredClubs.map((club) => {
                 const isSubscribed = myClubs.includes(club.id);
-                const memberCount = club.club_subscriptions?.[0]?.count || 0;
+                const memberCount = club.members_count || 0;
 
                 return (
-                  <Card key={club.id} className="card-pressable">
+                  <Card 
+                    key={club.id} 
+                    className="card-pressable"
+                    onClick={canEdit ? () => openEditModal(club) : undefined}
+                  >
                     <CardHeader>
                       <CardIcon subscribed={isSubscribed}>{club.icon || '🎭'}</CardIcon>
                       <CardInfo>
-                        <CardTitle>{club.name} {isSubscribed && <Badge variant="green">✓</Badge>}</CardTitle>
+                        <CardTitle>
+                          {club.name} 
+                          {isSubscribed && <Badge variant="green">✓ Подписан</Badge>}
+                        </CardTitle>
                         <CardDescription>{club.description || 'Описание отсутствует'}</CardDescription>
-                        <CardMeta><CardMetaItem icon="👥">{getMembersText(memberCount)}</CardMetaItem></CardMeta>
+                        <CardMeta>
+                          <CardMetaItem>👥 {getMembersText(memberCount)}</CardMetaItem>
+                        </CardMeta>
                       </CardInfo>
                     </CardHeader>
                     <CardFooter>
                       <Button 
                         variant={isSubscribed ? 'secondary' : 'primary'} 
                         size="small" 
-                        fullWidth={!canEdit} 
-                        onClick={(e) => { e.stopPropagation(); toggleSubscription(club.id, club.name); }}
+                        onClick={(e) => toggleSubscription(club.id, club.name, e)}
                       >
                         {isSubscribed ? 'Отписаться' : 'Подписаться'}
                       </Button>
                       {canEdit && (
-                        <Button variant="danger" size="small" onClick={(e) => { e.stopPropagation(); deleteClub(club.id); }}>
-                          Удалить
-                        </Button>
+                        <>
+                          <Button 
+                            variant="secondary" 
+                            size="small" 
+                            onClick={(e) => { e.stopPropagation(); openEditModal(club); }}
+                          >
+                            ✏️
+                          </Button>
+                          <Button 
+                            variant="danger" 
+                            size="small" 
+                            onClick={(e) => deleteClub(club.id, club.name, e)}
+                          >
+                            🗑️
+                          </Button>
+                        </>
                       )}
                     </CardFooter>
                   </Card>
@@ -183,15 +269,20 @@ export const ClubsPage = memo(function ClubsPage() {
         </div>
       </PullToRefresh>
 
+      {/* Модальное окно создания/редактирования */}
       <Modal 
         isOpen={showModal} 
-        onClose={() => setShowModal(false)} 
-        title="Создать клуб" 
+        onClose={closeModal} 
+        title={editingClub ? 'Редактировать клуб' : 'Создать клуб'} 
         footer={
           <>
-            <Button variant="secondary" onClick={() => setShowModal(false)}>Отмена</Button>
-            <Button variant="primary" onClick={addClub} disabled={!newClub.name.trim() || submitting}>
-              {submitting ? 'Создание...' : 'Создать'}
+            <Button variant="secondary" onClick={closeModal}>Отмена</Button>
+            <Button 
+              variant="primary" 
+              onClick={saveClub} 
+              disabled={!clubForm.name.trim() || submitting}
+            >
+              {submitting ? 'Сохранение...' : (editingClub ? 'Сохранить' : 'Создать')}
             </Button>
           </>
         }
@@ -202,27 +293,29 @@ export const ClubsPage = memo(function ClubsPage() {
               <button 
                 key={icon} 
                 type="button" 
-                className={`icon-option ${newClub.icon === icon ? 'active' : ''}`} 
-                onClick={() => setNewClub(prev => ({ ...prev, icon }))}
+                className={`icon-option ${clubForm.icon === icon ? 'active' : ''}`} 
+                onClick={() => setClubForm(prev => ({ ...prev, icon }))}
               >
                 {icon}
               </button>
             ))}
           </div>
         </FormField>
-        <FormField label="Название клуба">
+        
+        <FormField label="Название клуба *">
           <Input 
-            value={newClub.name} 
-            onChange={(e) => setNewClub(prev => ({ ...prev, name: e.target.value }))} 
+            value={clubForm.name} 
+            onChange={(e) => setClubForm(prev => ({ ...prev, name: e.target.value }))} 
             placeholder="Например: IT-клуб" 
             autoFocus 
           />
         </FormField>
+        
         <FormField label="Описание">
           <Textarea 
-            value={newClub.description} 
-            onChange={(e) => setNewClub(prev => ({ ...prev, description: e.target.value }))} 
-            placeholder="Расскажите о клубе..." 
+            value={clubForm.description} 
+            onChange={(e) => setClubForm(prev => ({ ...prev, description: e.target.value }))} 
+            placeholder="Расскажите о клубе, чем вы занимаетесь..." 
           />
         </FormField>
       </Modal>
