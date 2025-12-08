@@ -1,5 +1,5 @@
 /**
- * EventsPage — Оптимизированная
+ * EventsPage — Исправленная с правами админа
  */
 import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import { supabase, invalidateCache } from '../utils/supabase';
@@ -15,19 +15,34 @@ export const EventsPage = memo(function EventsPage() {
   const { user } = useApp();
   const { notify } = useNotification();
   const [events, setEvents] = useState([]);
+  const [clubs, setClubs] = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [newEvent, setNewEvent] = useState({ title: '', description: '', event_date: '', location: '', is_university_wide: true });
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [newEvent, setNewEvent] = useState({ 
+    title: '', 
+    description: '', 
+    event_date: '', 
+    location: '', 
+    club_id: '',
+    max_participants: '',
+    is_university_wide: true 
+  });
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
+  // Админ может всё
   const canEdit = user.role === 'main_admin' || user.role === 'club_admin';
 
   const loadEvents = useCallback(async () => {
     try {
-      const { data } = await supabase.from('events').select('*, clubs(name)').order('event_date', { ascending: true });
-      setEvents(data || []);
+      const [eventsRes, clubsRes] = await Promise.all([
+        supabase.from('events').select('*, clubs(name, icon)').order('event_date', { ascending: true }),
+        supabase.from('clubs').select('id, name, icon').order('name')
+      ]);
+      setEvents(eventsRes.data || []);
+      setClubs(clubsRes.data || []);
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -43,27 +58,76 @@ export const EventsPage = memo(function EventsPage() {
     notify.success('Обновлено');
   }, [loadEvents, notify]);
 
-  const addEvent = useCallback(async () => {
-    if (!newEvent.title.trim() || !newEvent.event_date) return;
+  const openAddModal = useCallback(() => {
+    setEditingEvent(null);
+    setNewEvent({ 
+      title: '', 
+      description: '', 
+      event_date: '', 
+      location: '', 
+      club_id: '',
+      max_participants: '',
+      is_university_wide: true 
+    });
+    setShowModal(true);
+  }, []);
+
+  const openEditModal = useCallback((event) => {
+    setEditingEvent(event);
+    setNewEvent({
+      title: event.title || '',
+      description: event.description || '',
+      event_date: event.event_date ? event.event_date.slice(0, 16) : '',
+      location: event.location || '',
+      club_id: event.club_id || '',
+      max_participants: event.max_participants || '',
+      is_university_wide: event.is_university_wide ?? true
+    });
+    setShowModal(true);
+    haptic.light();
+  }, []);
+
+  const saveEvent = useCallback(async () => {
+    if (!newEvent.title.trim() || !newEvent.event_date) {
+      notify.error('Заполните название и дату');
+      return;
+    }
     setSubmitting(true);
     try {
-      await supabase.from('events').insert({ ...newEvent, created_by: user.id });
+      const eventData = {
+        title: newEvent.title.trim(),
+        description: newEvent.description.trim(),
+        event_date: newEvent.event_date,
+        location: newEvent.location.trim(),
+        club_id: newEvent.club_id || null,
+        max_participants: newEvent.max_participants ? parseInt(newEvent.max_participants) : null,
+        is_university_wide: newEvent.is_university_wide
+      };
+
+      if (editingEvent) {
+        await supabase.from('events').update(eventData).eq('id', editingEvent.id);
+        notify.success('Мероприятие обновлено');
+      } else {
+        await supabase.from('events').insert({ ...eventData, created_by: user.id });
+        notify.success('Мероприятие создано');
+      }
+
       invalidateCache('events');
-      setNewEvent({ title: '', description: '', event_date: '', location: '', is_university_wide: true });
       setShowModal(false);
+      setEditingEvent(null);
       loadEvents();
-      notify.success('Мероприятие создано');
       haptic.success();
     } catch (error) {
-      notify.error('Ошибка создания');
+      console.error('Error:', error);
+      notify.error('Ошибка сохранения');
       haptic.error();
     } finally {
       setSubmitting(false);
     }
-  }, [newEvent, user.id, loadEvents, notify]);
+  }, [newEvent, editingEvent, user.id, loadEvents, notify]);
 
   const deleteEvent = useCallback(async (id, e) => {
-    e.stopPropagation();
+    e?.stopPropagation();
     if (!window.confirm('Удалить мероприятие?')) return;
     try {
       await supabase.from('events').delete().eq('id', id);
@@ -122,7 +186,7 @@ export const EventsPage = memo(function EventsPage() {
     <>
       <PageHeader 
         title="📅 Мероприятия" 
-        action={canEdit && <Button variant="primary" onClick={() => setShowModal(true)}>+ Создать</Button>} 
+        action={canEdit && <Button variant="primary" onClick={openAddModal}>+ Создать</Button>} 
         search={search} 
         onSearch={setSearch} 
       />
@@ -131,7 +195,7 @@ export const EventsPage = memo(function EventsPage() {
         showSearch 
         searchValue={search} 
         onSearchChange={setSearch} 
-        actions={canEdit ? [{ icon: 'plus', onClick: () => setShowModal(true), primary: true }] : []} 
+        actions={canEdit ? [{ icon: 'plus', onClick: openAddModal, primary: true }] : []} 
       />
 
       <PullToRefresh onRefresh={handleRefresh}>
@@ -141,27 +205,43 @@ export const EventsPage = memo(function EventsPage() {
           {loading ? (
             <div className="cards-grid">{[1,2,3].map(i => <SkeletonCard key={i} />)}</div>
           ) : filteredEvents.length === 0 ? (
-            <EmptyState icon="📅" title="Нет мероприятий" text={filter !== 'all' ? 'Нет мероприятий в этом периоде' : 'Создайте первое мероприятие'} />
+            <EmptyState 
+              icon="📅" 
+              title="Нет мероприятий" 
+              text={filter !== 'all' ? 'Нет мероприятий в этом периоде' : 'Создайте первое мероприятие'}
+              action={canEdit && <Button variant="primary" onClick={openAddModal}>+ Создать</Button>}
+            />
           ) : (
             <div className="cards-grid">
               {filteredEvents.map((event) => {
                 const isPast = new Date(event.event_date) < today;
                 return (
-                  <Card key={event.id} className={isPast ? 'card-past' : ''}>
+                  <Card key={event.id} className={isPast ? 'card-past' : ''} onClick={canEdit ? () => openEditModal(event) : undefined}>
                     <CardHeader>
-                      <CardIcon>{isPast ? '📆' : '📅'}</CardIcon>
+                      <CardIcon>{event.clubs?.icon || (isPast ? '📆' : '📅')}</CardIcon>
                       <CardInfo>
-                        <CardTitle>{event.title} {isPast && <span className="badge">Прошло</span>}</CardTitle>
+                        <CardTitle>
+                          {event.title} 
+                          {isPast && <span className="badge">Прошло</span>}
+                          {event.is_university_wide && <span className="badge badge-blue">Общее</span>}
+                        </CardTitle>
                         <CardDescription>{event.description || 'Описание отсутствует'}</CardDescription>
                         <CardMeta>
-                          <CardMetaItem icon="📍">{event.location || 'Место не указано'}</CardMetaItem>
-                          <CardMetaItem icon="🕒">{formatDate(event.event_date)}</CardMetaItem>
+                          {event.clubs?.name && <CardMetaItem>🎭 {event.clubs.name}</CardMetaItem>}
+                          <CardMetaItem>📍 {event.location || 'Место не указано'}</CardMetaItem>
+                          <CardMetaItem>🕒 {formatDate(event.event_date)}</CardMetaItem>
+                          {event.max_participants && <CardMetaItem>👥 до {event.max_participants} чел.</CardMetaItem>}
                         </CardMeta>
                       </CardInfo>
                     </CardHeader>
                     {canEdit && (
                       <CardFooter>
-                        <Button variant="danger" size="small" fullWidth onClick={(e) => deleteEvent(event.id, e)}>Удалить</Button>
+                        <Button variant="secondary" size="small" onClick={(e) => { e.stopPropagation(); openEditModal(event); }}>
+                          ✏️ Изменить
+                        </Button>
+                        <Button variant="danger" size="small" onClick={(e) => deleteEvent(event.id, e)}>
+                          🗑️ Удалить
+                        </Button>
                       </CardFooter>
                     )}
                   </Card>
@@ -174,28 +254,71 @@ export const EventsPage = memo(function EventsPage() {
 
       <Modal 
         isOpen={showModal} 
-        onClose={() => setShowModal(false)} 
-        title="Создать мероприятие" 
+        onClose={() => { setShowModal(false); setEditingEvent(null); }} 
+        title={editingEvent ? 'Редактировать мероприятие' : 'Создать мероприятие'} 
         footer={
           <>
-            <Button variant="secondary" onClick={() => setShowModal(false)}>Отмена</Button>
-            <Button variant="primary" onClick={addEvent} disabled={!newEvent.title.trim() || !newEvent.event_date || submitting}>
-              {submitting ? 'Создание...' : 'Создать'}
+            <Button variant="secondary" onClick={() => { setShowModal(false); setEditingEvent(null); }}>Отмена</Button>
+            <Button variant="primary" onClick={saveEvent} disabled={!newEvent.title.trim() || !newEvent.event_date || submitting}>
+              {submitting ? 'Сохранение...' : (editingEvent ? 'Сохранить' : 'Создать')}
             </Button>
           </>
         }
       >
-        <FormField label="Название">
-          <Input value={newEvent.title} onChange={(e) => setNewEvent(prev => ({ ...prev, title: e.target.value }))} placeholder="Встреча клуба" autoFocus />
+        <FormField label="Название *">
+          <Input 
+            value={newEvent.title} 
+            onChange={(e) => setNewEvent(prev => ({ ...prev, title: e.target.value }))} 
+            placeholder="Встреча клуба программирования" 
+            autoFocus 
+          />
         </FormField>
+
         <FormField label="Описание">
-          <Textarea value={newEvent.description} onChange={(e) => setNewEvent(prev => ({ ...prev, description: e.target.value }))} placeholder="Расскажите..." />
+          <Textarea 
+            value={newEvent.description} 
+            onChange={(e) => setNewEvent(prev => ({ ...prev, description: e.target.value }))} 
+            placeholder="Расскажите о мероприятии..." 
+          />
         </FormField>
-        <FormField label="Дата и время">
-          <Input type="datetime-local" value={newEvent.event_date} onChange={(e) => setNewEvent(prev => ({ ...prev, event_date: e.target.value }))} />
+
+        <FormField label="Дата и время *">
+          <Input 
+            type="datetime-local" 
+            value={newEvent.event_date} 
+            onChange={(e) => setNewEvent(prev => ({ ...prev, event_date: e.target.value }))} 
+          />
         </FormField>
-        <FormField label="Место">
-          <Input value={newEvent.location} onChange={(e) => setNewEvent(prev => ({ ...prev, location: e.target.value }))} placeholder="Аудитория 101" />
+
+        <FormField label="Место проведения">
+          <Input 
+            value={newEvent.location} 
+            onChange={(e) => setNewEvent(prev => ({ ...prev, location: e.target.value }))} 
+            placeholder="Аудитория 101 / Онлайн" 
+          />
+        </FormField>
+
+        <FormField label="Клуб-организатор">
+          <select 
+            className="form-select" 
+            value={newEvent.club_id} 
+            onChange={(e) => setNewEvent(prev => ({ ...prev, club_id: e.target.value }))}
+          >
+            <option value="">Без клуба (общеуниверситетское)</option>
+            {clubs.map(club => (
+              <option key={club.id} value={club.id}>{club.icon} {club.name}</option>
+            ))}
+          </select>
+        </FormField>
+
+        <FormField label="Макс. участников">
+          <Input 
+            type="number" 
+            value={newEvent.max_participants} 
+            onChange={(e) => setNewEvent(prev => ({ ...prev, max_participants: e.target.value }))} 
+            placeholder="Без ограничений" 
+            min="1"
+          />
         </FormField>
       </Modal>
     </>
