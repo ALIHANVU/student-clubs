@@ -1,47 +1,47 @@
 /**
- * Navigation — с настоящими иконками в стиле Apple SF Symbols
+ * Navigation — Обновлённая (без страницы структуры)
  */
 import React, { memo, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { haptic } from '../utils/haptic';
 import { 
-  IconHome, IconUsers, IconCalendar, IconBuilding, 
+  IconHome, IconUsers, IconCalendar, 
   IconUser, IconSparkles, IconSettings, IconSearch, IconPlus,
-  IconGraduationCap, IconChevronLeft
+  IconGraduationCap, IconChevronLeft, IconBook
 } from './Icons';
 
-// Навигация для админов
+// Навигация для админов (sidebar)
 const ADMIN_NAV = [
   { id: 'dashboard', label: 'Главная', icon: IconHome },
+  { id: 'schedule', label: 'Расписание', icon: IconBook },
   { id: 'clubs', label: 'Клубы', icon: IconSparkles },
   { id: 'events', label: 'События', icon: IconCalendar },
-  { id: 'schedule', label: 'Расписание', icon: IconCalendar },
-  { id: 'faculties', label: 'Структура', icon: IconBuilding },
   { id: 'users', label: 'Пользователи', icon: IconUsers },
 ];
 
-// Навигация для студентов
+// Навигация для студентов/старост (sidebar)
 const STUDENT_NAV = [
   { id: 'dashboard', label: 'Главная', icon: IconHome },
+  { id: 'schedule', label: 'Расписание', icon: IconBook },
   { id: 'clubs', label: 'Клубы', icon: IconSparkles },
   { id: 'events', label: 'События', icon: IconCalendar },
-  { id: 'schedule', label: 'Расписание', icon: IconCalendar },
 ];
 
-// Tab bar для мобильных (максимум 5 вкладок)
+// Tab bar для админов (mobile)
 const MOBILE_TABS_ADMIN = [
   { id: 'dashboard', label: 'Главная', icon: IconHome },
+  { id: 'schedule', label: 'Расписание', icon: IconBook },
   { id: 'clubs', label: 'Клубы', icon: IconSparkles },
-  { id: 'events', label: 'События', icon: IconCalendar },
   { id: 'users', label: 'Люди', icon: IconUsers },
   { id: 'profile', label: 'Профиль', icon: IconUser },
 ];
 
+// Tab bar для студентов (mobile)
 const MOBILE_TABS_STUDENT = [
   { id: 'dashboard', label: 'Главная', icon: IconHome },
+  { id: 'schedule', label: 'Расписание', icon: IconBook },
   { id: 'clubs', label: 'Клубы', icon: IconSparkles },
   { id: 'events', label: 'События', icon: IconCalendar },
-  { id: 'schedule', label: 'Расписание', icon: IconCalendar },
   { id: 'profile', label: 'Профиль', icon: IconUser },
 ];
 
@@ -102,7 +102,7 @@ export const Sidebar = memo(function Sidebar() {
   );
 });
 
-// Tab Bar для мобильных — плавающий в стиле iOS
+// Tab Bar для мобильных
 export const TabBar = memo(function TabBar() {
   const { user, activeTab, setActiveTab } = useApp();
   const isAdmin = user.role === 'main_admin' || user.role === 'club_admin';
@@ -135,7 +135,7 @@ export const TabBar = memo(function TabBar() {
   );
 });
 
-// Mobile Page Header — в стиле iOS
+// Mobile Page Header
 export const MobilePageHeader = memo(function MobilePageHeader({ 
   title, 
   subtitle,
