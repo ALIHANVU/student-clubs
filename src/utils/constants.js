@@ -1,19 +1,21 @@
 /**
- * Constants — Оптимизированные
+ * Constants — Обновлённые (без отдельной страницы структуры)
  */
 
+// Навигация для sidebar (desktop)
 export const NAV_ITEMS = {
   main_admin: [
     { id: 'dashboard', icon: '📊', label: 'Дашборд' },
     { id: 'clubs', icon: '🎭', label: 'Клубы' },
     { id: 'events', icon: '📅', label: 'Мероприятия' },
-    { id: 'faculties', icon: '🏛️', label: 'Структура' },
+    { id: 'schedule', icon: '📚', label: 'Расписание' },
     { id: 'users', icon: '👥', label: 'Пользователи' },
   ],
   club_admin: [
     { id: 'dashboard', icon: '📊', label: 'Обзор' },
     { id: 'clubs', icon: '🎭', label: 'Мой клуб' },
     { id: 'events', icon: '📅', label: 'Мероприятия' },
+    { id: 'schedule', icon: '📚', label: 'Расписание' },
   ],
   group_leader: [
     { id: 'dashboard', icon: '🏠', label: 'Главная' },
@@ -23,21 +25,23 @@ export const NAV_ITEMS = {
   ],
   student: [
     { id: 'dashboard', icon: '🏠', label: 'Главная' },
+    { id: 'schedule', icon: '📚', label: 'Расписание' },
     { id: 'clubs', icon: '🎭', label: 'Клубы' },
     { id: 'events', icon: '📅', label: 'Мероприятия' },
-    { id: 'schedule', icon: '📚', label: 'Расписание' },
   ]
 };
 
+// Навигация для tab bar (mobile) - максимум 5 вкладок
 export const TAB_BAR_ITEMS = {
   main_admin: [
     { id: 'dashboard', icon: '📊', label: 'Главная' },
+    { id: 'schedule', icon: '📚', label: 'Расписание' },
     { id: 'clubs', icon: '🎭', label: 'Клубы' },
-    { id: 'faculties', icon: '🏛️', label: 'Структура' },
     { id: 'users', icon: '👥', label: 'Юзеры' },
   ],
   club_admin: [
     { id: 'dashboard', icon: '📊', label: 'Обзор' },
+    { id: 'schedule', icon: '📚', label: 'Расписание' },
     { id: 'clubs', icon: '🎭', label: 'Клуб' },
     { id: 'events', icon: '📅', label: 'События' },
   ],
@@ -49,9 +53,9 @@ export const TAB_BAR_ITEMS = {
   ],
   student: [
     { id: 'dashboard', icon: '🏠', label: 'Главная' },
+    { id: 'schedule', icon: '📚', label: 'Расписание' },
     { id: 'clubs', icon: '🎭', label: 'Клубы' },
     { id: 'events', icon: '📅', label: 'События' },
-    { id: 'schedule', icon: '📚', label: 'Расписание' },
   ]
 };
 
@@ -63,9 +67,9 @@ export const ROLE_NAMES = {
 };
 
 export const DEMO_CREDENTIALS = [
-  { email: 'admin@university.com', password: 'admin123', label: 'Админ' },
-  { email: 'leader@university.com', password: 'leader123', label: 'Староста' },
-  { email: 'student@university.com', password: 'student123', label: 'Студент' },
+  { email: 'admin@uniclub.ru', password: 'admin123', label: 'Админ' },
+  { email: 'leader@uniclub.ru', password: 'leader123', label: 'Староста' },
+  { email: 'student@uniclub.ru', password: 'student123', label: 'Студент' },
 ];
 
 export const STORAGE_KEY = 'uniclub_user';
@@ -91,6 +95,12 @@ export const LESSON_TYPES = [
   { id: 'practice', label: 'Практика', icon: '✏️' },
   { id: 'lab', label: 'Лабораторная', icon: '🔬' },
   { id: 'seminar', label: 'Семинар', icon: '💬' },
+];
+
+export const WEEK_TYPES = [
+  { id: 'all', label: 'Каждую неделю' },
+  { id: 'odd', label: 'Нечётная неделя' },
+  { id: 'even', label: 'Чётная неделя' },
 ];
 
 export const CLUB_ICONS = ['🎭', '💻', '⚽', '🎵', '📚', '🎨', '🎮', '🔬', '🎬', '🌍'];
