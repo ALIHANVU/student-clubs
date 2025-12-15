@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom/client';
 import './styles/index.css';
 import App from './App';
 
-// Register Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
