@@ -1,5 +1,5 @@
 /**
- * EventsPage — Исправленная с правами админа
+ * EventsPage — Страница мероприятий
  */
 import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import { supabase, invalidateCache } from '../utils/supabase';
@@ -32,7 +32,6 @@ export const EventsPage = memo(function EventsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  // Админ может всё
   const canEdit = user.role === 'main_admin' || user.role === 'club_admin';
 
   const loadEvents = useCallback(async () => {
@@ -61,13 +60,8 @@ export const EventsPage = memo(function EventsPage() {
   const openAddModal = useCallback(() => {
     setEditingEvent(null);
     setNewEvent({ 
-      title: '', 
-      description: '', 
-      event_date: '', 
-      location: '', 
-      club_id: '',
-      max_participants: '',
-      is_university_wide: true 
+      title: '', description: '', event_date: '', location: '', 
+      club_id: '', max_participants: '', is_university_wide: true 
     });
     setShowModal(true);
   }, []);
@@ -141,7 +135,6 @@ export const EventsPage = memo(function EventsPage() {
     }
   }, [loadEvents, notify]);
 
-  // Мемоизированная фильтрация
   const { today, filteredEvents } = useMemo(() => {
     const now = new Date();
     const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -161,7 +154,6 @@ export const EventsPage = memo(function EventsPage() {
       result = result.filter(e => new Date(e.event_date) < todayDate);
     }
 
-    // Сортировка: прошедшие в конец
     result.sort((a, b) => {
       const dateA = new Date(a.event_date);
       const dateB = new Date(b.event_date);
@@ -230,7 +222,6 @@ export const EventsPage = memo(function EventsPage() {
                           {event.clubs?.name && <CardMetaItem>🎭 {event.clubs.name}</CardMetaItem>}
                           <CardMetaItem>📍 {event.location || 'Место не указано'}</CardMetaItem>
                           <CardMetaItem>🕒 {formatDate(event.event_date)}</CardMetaItem>
-                          {event.max_participants && <CardMetaItem>👥 до {event.max_participants} чел.</CardMetaItem>}
                         </CardMeta>
                       </CardInfo>
                     </CardHeader>
@@ -309,16 +300,6 @@ export const EventsPage = memo(function EventsPage() {
               <option key={club.id} value={club.id}>{club.icon} {club.name}</option>
             ))}
           </select>
-        </FormField>
-
-        <FormField label="Макс. участников">
-          <Input 
-            type="number" 
-            value={newEvent.max_participants} 
-            onChange={(e) => setNewEvent(prev => ({ ...prev, max_participants: e.target.value }))} 
-            placeholder="Без ограничений" 
-            min="1"
-          />
         </FormField>
       </Modal>
     </>
