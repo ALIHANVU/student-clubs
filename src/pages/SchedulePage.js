@@ -11,7 +11,7 @@ import { supabase, invalidateCache } from '../utils/supabase';
 import { haptic } from '../utils/haptic';
 import { useNotification } from '../context/NotificationContext';
 import { useApp } from '../context/AppContext';
-import { DAYS, TIME_SLOTS, LESSON_TYPES, WEEK_TYPES } from '../utils/constants';
+import { DAYS, LESSON_TYPES, WEEK_TYPES } from '../utils/constants';
 import { formatTime, getLessonTypeLabel, getLessonTypeIcon } from '../utils/helpers';
 import { 
   PageHeader, EmptyState, FilterTabs, Button, FormField, Input, 
@@ -320,13 +320,23 @@ export const SchedulePage = memo(function SchedulePage() {
       haptic.success();
       
       if (andAddAnother && !editingLesson) {
-        // Очищаем форму для нового занятия, сохраняя день и время
-        const nextStartTime = lessonForm.end_time;
-        const endHour = parseInt(nextStartTime.split(':')[0]);
-        const endMinute = parseInt(nextStartTime.split(':')[1]);
-        const nextEndHour = endHour + 1;
-        const nextEndMinute = endMinute + 30;
-        const nextEndTime = `${String(nextEndHour + Math.floor(nextEndMinute / 60)).padStart(2, '0')}:${String(nextEndMinute % 60).padStart(2, '0')}`;
+        // Очищаем форму для нового занятия
+        // Следующее занятие начинается через 15 минут после конца предыдущего
+        const [endHour, endMinute] = lessonForm.end_time.split(':').map(Number);
+        const nextStartHour = endHour;
+        const nextStartMinute = endMinute + 15;
+        const actualStartHour = nextStartHour + Math.floor(nextStartMinute / 60);
+        const actualStartMinute = nextStartMinute % 60;
+        
+        const nextStartTime = `${String(actualStartHour).padStart(2, '0')}:${String(actualStartMinute).padStart(2, '0')}`;
+        
+        // Конец следующего занятия через 1.5 часа
+        const nextEndHour = actualStartHour + 1;
+        const nextEndMinute = actualStartMinute + 30;
+        const actualEndHour = nextEndHour + Math.floor(nextEndMinute / 60);
+        const actualEndMinute = nextEndMinute % 60;
+        
+        const nextEndTime = `${String(actualEndHour).padStart(2, '0')}:${String(actualEndMinute).padStart(2, '0')}`;
         
         setLessonForm({
           subject: '',
@@ -639,7 +649,7 @@ export const SchedulePage = memo(function SchedulePage() {
             <>
               <FilterTabs tabs={dayTabs} activeTab={activeDay} onChange={setActiveDay} />
               <div className="schedule-day-title">
-                {DAYS.find(d => d.id === activeDay)?.name}
+                {DAYS.find(d => d.id === activeDay)?.name} ({daySchedule.length} {daySchedule.length === 1 ? 'занятие' : daySchedule.length < 5 ? 'занятия' : 'занятий'})
                 {selectedSubgroup && ` • ${filteredSubgroups.find(s => s.id === selectedSubgroup)?.name}`}
               </div>
             </>
@@ -721,6 +731,7 @@ export const SchedulePage = memo(function SchedulePage() {
                 variant="secondary" 
                 onClick={() => saveLesson(true)} 
                 disabled={!lessonForm.subject.trim() || submitting}
+                style={{ minWidth: 80 }}
               >
                 + Ещё
               </Button>
@@ -735,6 +746,18 @@ export const SchedulePage = memo(function SchedulePage() {
           </>
         }
       >
+        {!editingLesson && (
+          <div style={{ 
+            background: 'rgba(0, 122, 255, 0.08)', 
+            padding: '12px', 
+            borderRadius: '12px', 
+            fontSize: '13px', 
+            marginBottom: '16px',
+            color: 'var(--text-secondary)'
+          }}>
+            💡 <strong>Совет:</strong> Нажми "+ Ещё" чтобы быстро добавить несколько занятий подряд
+          </div>
+        )}
         <FormField label="Предмет *">
           <Input 
             value={lessonForm.subject} 
@@ -772,22 +795,18 @@ export const SchedulePage = memo(function SchedulePage() {
         
         <div className="form-row">
           <FormField label="Начало">
-            <select 
-              className="form-select" 
+            <Input 
+              type="time" 
               value={lessonForm.start_time} 
               onChange={(e) => setLessonForm(p => ({ ...p, start_time: e.target.value }))}
-            >
-              {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+            />
           </FormField>
           <FormField label="Конец">
-            <select 
-              className="form-select" 
+            <Input 
+              type="time" 
               value={lessonForm.end_time} 
               onChange={(e) => setLessonForm(p => ({ ...p, end_time: e.target.value }))}
-            >
-              {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+            />
           </FormField>
         </div>
         
