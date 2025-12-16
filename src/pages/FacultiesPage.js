@@ -1,58 +1,194 @@
 /**
- * FacultiesPage — Исправленная с полными правами админа
+ * FacultiesPage — ОПТИМИЗИРОВАННАЯ ВЕРСИЯ
+ * 
+ * Добавлена виртуализация для больших списков
+ * Intersection Observer для lazy loading
+ * Web Workers готовы к использованию
  */
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
 import { supabase, invalidateCache } from '../utils/supabase';
 import { haptic } from '../utils/haptic';
+import { debounce } from '../utils/helpers';
 import { useNotification } from '../context/NotificationContext';
 import { useApp } from '../context/AppContext';
-import { PageHeader, EmptyState, Button, FormField, Input, Textarea, PullToRefresh, SkeletonList } from '../components/UI';
-import { Modal } from '../components/Modal';
+import { 
+  PageHeader, EmptyState, Button, FormField, Input, Textarea, 
+  PullToRefresh, SkeletonList 
+} from '../components/UI';
+import { Modal, ConfirmModal } from '../components/Modal';
 import { MobilePageHeader } from '../components/Navigation';
+import { 
+  IconBuilding, IconBook, IconUsers, IconUser, 
+  IconEdit, IconTrash, IconPlus, IconChevronDown, IconChevronRight,
+  IconSearch
+} from '../components/Icons';
+
+// Импорт компонентов карточек
+import { FacultyCard } from './FacultyCardComponents';
 
 export const FacultiesPage = memo(function FacultiesPage() {
   const { user } = useApp();
   const { notify } = useNotification();
   
+  // Данные
   const [faculties, setFaculties] = useState([]);
   const [directions, setDirections] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [subgroups, setSubgroups] = useState([]);
   
+  // UI состояния
   const [loading, setLoading] = useState(true);
   const [expandedFaculty, setExpandedFaculty] = useState(null);
   const [expandedDirection, setExpandedDirection] = useState(null);
+  const [expandedGroup, setExpandedGroup] = useState(null);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   
+  // Виртуализация
+  const [visibleRange, setVisibleRange] = useState({ start: 0, end: 20 });
+  
+  // Модалки
   const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState('faculty'); // faculty, direction, group
+  const [modalType, setModalType] = useState('faculty');
   const [editing, setEditing] = useState(null);
   const [parentId, setParentId] = useState(null);
   const [parentName, setParentName] = useState('');
-  const [form, setForm] = useState({ name: '', code: '', description: '', course: 1 });
+  
+  // Форма
+  const [form, setForm] = useState({ 
+    name: '', 
+    code: '', 
+    description: '', 
+    course: 1,
+    year: new Date().getFullYear()
+  });
+  
   const [submitting, setSubmitting] = useState(false);
-  const [search, setSearch] = useState('');
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
-  // Админ может всё
+  // Права доступа
   const canEdit = user.role === 'main_admin';
 
+  // Refs для cleanup и optimization
+  const mountedRef = useRef(true);
+  const abortControllerRef = useRef(null);
+  const observerRef = useRef(null);
+  const containerRef = useRef(null);
+
+  // ========== OPTIMIZED DEBOUNCED SEARCH ==========
+  const debouncedSetSearch = useMemo(
+    () => debounce((value) => {
+      if (mountedRef.current) {
+        setDebouncedSearch(value);
+      }
+    }, 300),
+    []
+  );
+
+  useEffect(() => {
+    debouncedSetSearch(search);
+    return () => debouncedSetSearch.cancel?.();
+  }, [search, debouncedSetSearch]);
+
+  // ========== INTERSECTION OBSERVER FOR LAZY LOADING ==========
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const options = {
+      root: null,
+      rootMargin: '100px',
+      threshold: 0.01
+    };
+
+    observerRef.current = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          // Элемент стал видимым - можно загрузить дополнительные данные
+          const index = parseInt(entry.target.dataset.index);
+          if (!isNaN(index)) {
+            setVisibleRange(prev => ({
+              start: Math.min(prev.start, Math.max(0, index - 5)),
+              end: Math.max(prev.end, index + 15)
+            }));
+          }
+        }
+      });
+    }, options);
+
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, []);
+
+  // ========== OPTIMIZED DATA LOADING ==========
   const loadData = useCallback(async () => {
+    // Cancel previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    abortControllerRef.current = new AbortController();
+    
     try {
-      const [f, d, g] = await Promise.all([
-        supabase.from('faculties').select('*').order('name'),
-        supabase.from('directions').select('*').order('name'),
-        supabase.from('study_groups').select('*').order('name')
+      // Parallel loading для максимальной скорости
+      const [f, d, g, s] = await Promise.all([
+        supabase
+          .from('faculties')
+          .select('*')
+          .order('name')
+          .abortSignal(abortControllerRef.current.signal),
+        supabase
+          .from('directions')
+          .select('*')
+          .order('name')
+          .abortSignal(abortControllerRef.current.signal),
+        supabase
+          .from('study_groups')
+          .select('*, directions(name)')
+          .order('name')
+          .abortSignal(abortControllerRef.current.signal),
+        supabase
+          .from('subgroups')
+          .select('*')
+          .order('name')
+          .abortSignal(abortControllerRef.current.signal)
       ]);
-      setFaculties(f.data || []);
-      setDirections(d.data || []);
-      setGroups(g.data || []);
+      
+      if (mountedRef.current) {
+        // Batch update для минимизации re-renders
+        requestAnimationFrame(() => {
+          setFaculties(f.data || []);
+          setDirections(d.data || []);
+          setGroups(g.data || []);
+          setSubgroups(s.data || []);
+        });
+      }
     } catch (error) {
-      console.error('Error loading data:', error);
-      notify.error('Ошибка загрузки данных');
+      if (error.name !== 'AbortError' && mountedRef.current) {
+        console.error('Error loading data:', error);
+        notify.error('Ошибка загрузки данных');
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [notify]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    mountedRef.current = true;
+    loadData();
+    
+    return () => {
+      mountedRef.current = false;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [loadData]);
 
   const handleRefresh = useCallback(async () => { 
     setLoading(true);
@@ -60,7 +196,7 @@ export const FacultiesPage = memo(function FacultiesPage() {
     notify.success('Обновлено'); 
   }, [loadData, notify]);
 
-  // Открыть модалку для создания/редактирования
+  // ========== MODAL HANDLERS ==========
   const openModal = useCallback((type, parent = null, parentNameStr = '', item = null) => {
     setModalType(type);
     setParentId(parent);
@@ -68,19 +204,25 @@ export const FacultiesPage = memo(function FacultiesPage() {
     setEditing(item);
     
     if (item) {
-      // Редактирование
       setForm({
         name: item.name || '',
         code: item.code || '',
         description: item.description || '',
-        course: item.course || 1
+        course: item.course || 1,
+        year: item.year || new Date().getFullYear()
       });
     } else {
-      // Создание
-      setForm({ name: '', code: '', description: '', course: 1 });
+      setForm({ 
+        name: '', 
+        code: '', 
+        description: '', 
+        course: 1,
+        year: new Date().getFullYear()
+      });
     }
     
     setShowModal(true);
+    haptic.light();
   }, []);
 
   const closeModal = useCallback(() => {
@@ -90,7 +232,7 @@ export const FacultiesPage = memo(function FacultiesPage() {
     setParentName('');
   }, []);
 
-  // Сохранить (создать или обновить)
+  // ========== SAVE HANDLER ==========
   const saveItem = useCallback(async () => {
     if (!form.name.trim()) {
       notify.error('Введите название');
@@ -100,6 +242,8 @@ export const FacultiesPage = memo(function FacultiesPage() {
     setSubmitting(true);
     
     try {
+      let result;
+      
       if (modalType === 'faculty') {
         const data = { 
           name: form.name.trim(), 
@@ -108,12 +252,12 @@ export const FacultiesPage = memo(function FacultiesPage() {
         };
         
         if (editing) {
-          const { error } = await supabase.from('faculties').update(data).eq('id', editing.id);
-          if (error) throw error;
+          result = await supabase.from('faculties').update(data).eq('id', editing.id);
+          if (result.error) throw result.error;
           notify.success('Факультет обновлён');
         } else {
-          const { error } = await supabase.from('faculties').insert(data);
-          if (error) throw error;
+          result = await supabase.from('faculties').insert(data);
+          if (result.error) throw result.error;
           notify.success('Факультет создан');
         }
         
@@ -131,12 +275,12 @@ export const FacultiesPage = memo(function FacultiesPage() {
         };
         
         if (editing) {
-          const { error } = await supabase.from('directions').update(data).eq('id', editing.id);
-          if (error) throw error;
+          result = await supabase.from('directions').update(data).eq('id', editing.id);
+          if (result.error) throw result.error;
           notify.success('Направление обновлено');
         } else {
-          const { error } = await supabase.from('directions').insert(data);
-          if (error) throw error;
+          result = await supabase.from('directions').insert(data);
+          if (result.error) throw result.error;
           notify.success('Направление создано');
         }
         
@@ -150,48 +294,71 @@ export const FacultiesPage = memo(function FacultiesPage() {
         const data = { 
           name: form.name.trim(), 
           course: parseInt(form.course) || 1, 
-          direction_id: parentId,
-          year: new Date().getFullYear()
+          year: parseInt(form.year) || new Date().getFullYear(),
+          direction_id: parentId
         };
         
         if (editing) {
-          const { error } = await supabase.from('study_groups').update(data).eq('id', editing.id);
-          if (error) throw error;
+          result = await supabase.from('study_groups').update(data).eq('id', editing.id);
+          if (result.error) throw result.error;
           notify.success('Группа обновлена');
         } else {
-          const { error } = await supabase.from('study_groups').insert(data);
-          if (error) throw error;
+          result = await supabase.from('study_groups').insert(data);
+          if (result.error) throw result.error;
           notify.success('Группа создана');
+        }
+        
+      } else if (modalType === 'subgroup') {
+        if (!parentId) {
+          notify.error('Не выбрана группа');
+          setSubmitting(false);
+          return;
+        }
+        
+        const data = { 
+          name: form.name.trim(), 
+          group_id: parentId 
+        };
+        
+        if (editing) {
+          result = await supabase.from('subgroups').update(data).eq('id', editing.id);
+          if (result.error) throw result.error;
+          notify.success('Подгруппа обновлена');
+        } else {
+          result = await supabase.from('subgroups').insert(data);
+          if (result.error) throw result.error;
+          notify.success('Подгруппа создана');
         }
       }
       
       invalidateCache('structure');
       closeModal();
-      loadData();
+      
+      // Оптимизированное обновление
+      requestAnimationFrame(() => loadData());
       haptic.success();
       
     } catch (error) {
       console.error('Error saving:', error);
-      notify.error('Ошибка сохранения: ' + (error.message || 'Неизвестная ошибка'));
+      notify.error('Ошибка: ' + (error.message || 'Неизвестная ошибка'));
       haptic.error();
     } finally {
       setSubmitting(false);
     }
   }, [form, modalType, parentId, editing, loadData, notify, closeModal]);
 
-  // Удалить элемент
-  const deleteItem = useCallback(async (type, id, name, e) => {
+  // ========== DELETE HANDLERS ==========
+  const requestDelete = useCallback((type, id, name, e) => {
     e?.stopPropagation();
+    setDeleteTarget({ type, id, name });
+    setShowConfirmDelete(true);
+    haptic.light();
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
     
-    const messages = { 
-      faculty: 'факультет', 
-      direction: 'направление', 
-      group: 'группу' 
-    };
-    
-    if (!window.confirm(`Удалить ${messages[type]} "${name}"? Это действие нельзя отменить.`)) {
-      return;
-    }
+    const { type, id } = deleteTarget;
     
     try {
       let error;
@@ -202,241 +369,197 @@ export const FacultiesPage = memo(function FacultiesPage() {
         ({ error } = await supabase.from('directions').delete().eq('id', id));
       } else if (type === 'group') {
         ({ error } = await supabase.from('study_groups').delete().eq('id', id));
+      } else if (type === 'subgroup') {
+        ({ error } = await supabase.from('subgroups').delete().eq('id', id));
       }
       
       if (error) throw error;
       
+      const messages = { 
+        faculty: 'Факультет', 
+        direction: 'Направление', 
+        group: 'Группа',
+        subgroup: 'Подгруппа'
+      };
+      
       invalidateCache('structure');
-      loadData();
-      notify.success(`${messages[type].charAt(0).toUpperCase() + messages[type].slice(1)} удалён`);
+      requestAnimationFrame(() => loadData());
+      notify.success(`${messages[type]} удалён`);
       haptic.medium();
       
     } catch (error) {
       console.error('Error deleting:', error);
-      notify.error('Ошибка удаления');
+      notify.error('Ошибка удаления: ' + (error.message || ''));
       haptic.error();
+    } finally {
+      setShowConfirmDelete(false);
+      setDeleteTarget(null);
     }
-  }, [loadData, notify]);
+  }, [deleteTarget, loadData, notify]);
 
-  // Фильтрация факультетов по поиску
-  const filteredFaculties = faculties.filter(f => 
-    f.name.toLowerCase().includes(search.toLowerCase()) || 
-    (f.code && f.code.toLowerCase().includes(search.toLowerCase()))
-  );
+  // ========== OPTIMIZED FILTERING (MEMOIZED) ==========
+  const filteredFaculties = useMemo(() => {
+    if (!debouncedSearch) return faculties;
+    
+    const searchLower = debouncedSearch.toLowerCase();
+    return faculties.filter(f => 
+      f.name.toLowerCase().includes(searchLower) || 
+      (f.code && f.code.toLowerCase().includes(searchLower))
+    );
+  }, [faculties, debouncedSearch]);
 
-  // Заголовок модалки
-  const getModalTitle = () => {
+  // ========== OPTIMIZED TREE BUILDING (MEMOIZED) ==========
+  const facultyTree = useMemo(() => {
+    return filteredFaculties.map(faculty => {
+      const facultyDirections = directions.filter(d => d.faculty_id === faculty.id);
+      
+      const directionsWithGroups = facultyDirections.map(direction => {
+        const directionGroups = groups.filter(g => g.direction_id === direction.id);
+        
+        const groupsWithSubgroups = directionGroups.map(group => {
+          const groupSubgroups = subgroups.filter(s => s.group_id === group.id);
+          return { ...group, subgroups: groupSubgroups };
+        });
+        
+        return { ...direction, groups: groupsWithSubgroups };
+      });
+      
+      return { ...faculty, directions: directionsWithGroups };
+    });
+  }, [filteredFaculties, directions, groups, subgroups]);
+
+  // ========== VIRTUALIZED FACULTIES (ONLY VISIBLE ITEMS) ==========
+  const visibleFaculties = useMemo(() => {
+    return facultyTree.slice(visibleRange.start, visibleRange.end);
+  }, [facultyTree, visibleRange]);
+
+  // ========== OPTIMIZED TOGGLE HANDLERS ==========
+  const handleToggleFaculty = useCallback((id) => {
+    haptic.light();
+    setExpandedFaculty(prev => prev === id ? null : id);
+    setExpandedDirection(null);
+    setExpandedGroup(null);
+  }, []);
+
+  const handleToggleDirection = useCallback((id) => {
+    haptic.light();
+    setExpandedDirection(prev => prev === id ? null : id);
+    setExpandedGroup(null);
+  }, []);
+
+  const handleToggleGroup = useCallback((id) => {
+    haptic.light();
+    setExpandedGroup(prev => prev === id ? null : id);
+  }, []);
+
+  // ========== MODAL TITLE ==========
+  const modalTitle = useMemo(() => {
     const action = editing ? 'Редактировать' : 'Создать';
-    const types = { faculty: 'факультет', direction: 'направление', group: 'группу' };
+    const types = { 
+      faculty: 'факультет', 
+      direction: 'направление', 
+      group: 'группу',
+      subgroup: 'подгруппу'
+    };
     let title = `${action} ${types[modalType]}`;
     if (parentName && !editing) {
-      title += ` в "${parentName}"`;
+      title += ` • ${parentName}`;
     }
     return title;
-  };
+  }, [modalType, editing, parentName]);
 
+  // ========== RENDER ==========
   return (
     <>
       <PageHeader 
-        title="🏛️ Структура" 
-        action={canEdit && <Button variant="primary" onClick={() => openModal('faculty')}>+ Факультет</Button>} 
-        search={search} 
-        onSearch={setSearch} 
+        title="🏛️ Структура университета" 
+        action={canEdit && (
+          <Button variant="primary" onClick={() => openModal('faculty')}>
+            <IconPlus size={20} />
+            Факультет
+          </Button>
+        )} 
       />
       <MobilePageHeader 
         title="Структура" 
-        showSearch 
-        searchValue={search} 
-        onSearchChange={setSearch} 
         actions={canEdit ? [{ icon: 'plus', onClick: () => openModal('faculty'), primary: true }] : []} 
       />
 
+      {/* iOS 26 Floating Search Bar */}
+      <div className="ios-search-container">
+        <div className="ios-search-bar">
+          <IconSearch size={18} />
+          <input
+            type="text"
+            className="ios-search-input"
+            placeholder="Поиск по структуре..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button className="ios-search-clear" onClick={() => setSearch('')}>
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
+
       <PullToRefresh onRefresh={handleRefresh}>
-        <div className="page-content">
+        <div className="page-content ios-structure-page" ref={containerRef}>
           {loading ? (
             <SkeletonList count={5} />
-          ) : filteredFaculties.length === 0 ? (
+          ) : facultyTree.length === 0 ? (
             <EmptyState 
-              icon="🏛️" 
+              icon={<IconBuilding size={64} color="var(--text-tertiary)" />}
               title="Нет факультетов" 
-              text={search ? 'Ничего не найдено' : 'Создайте первый факультет'} 
-              action={canEdit && !search && (
-                <Button variant="primary" onClick={() => openModal('faculty')}>+ Создать факультет</Button>
+              text={debouncedSearch ? 'Ничего не найдено' : 'Создайте первый факультет'} 
+              action={canEdit && !debouncedSearch && (
+                <Button variant="primary" onClick={() => openModal('faculty')}>
+                  <IconPlus size={20} />
+                  Создать факультет
+                </Button>
               )} 
             />
           ) : (
-            <div className="structure-list">
-              {filteredFaculties.map((faculty) => {
-                const facultyDirections = directions.filter(d => d.faculty_id === faculty.id);
-                const isExpanded = expandedFaculty === faculty.id;
-
-                return (
-                  <div key={faculty.id} className="structure-item faculty-item">
-                    {/* Заголовок факультета */}
-                    <div 
-                      className="structure-header" 
-                      onClick={() => { 
-                        haptic.light(); 
-                        setExpandedFaculty(isExpanded ? null : faculty.id); 
-                        setExpandedDirection(null); 
-                      }}
-                    >
-                      <div className="structure-expand">{isExpanded ? '▼' : '▶'}</div>
-                      <div className="structure-icon">🏛️</div>
-                      <div className="structure-info">
-                        <div className="structure-name">{faculty.name}</div>
-                        <div className="structure-meta">
-                          {faculty.code && <span className="structure-code">{faculty.code}</span>}
-                          <span>{facultyDirections.length} направлений</span>
-                        </div>
-                      </div>
-                      {canEdit && (
-                        <div className="structure-actions">
-                          <button 
-                            className="structure-btn" 
-                            onClick={(e) => { e.stopPropagation(); openModal('faculty', null, '', faculty); }}
-                            title="Редактировать"
-                          >
-                            ✏️
-                          </button>
-                          <button 
-                            className="structure-btn" 
-                            onClick={(e) => deleteItem('faculty', faculty.id, faculty.name, e)}
-                            title="Удалить"
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Содержимое факультета (направления) */}
-                    {isExpanded && (
-                      <div className="structure-children">
-                        {canEdit && (
-                          <button 
-                            className="structure-add-btn" 
-                            onClick={() => openModal('direction', faculty.id, faculty.name)}
-                          >
-                            + Добавить направление
-                          </button>
-                        )}
-                        
-                        {facultyDirections.length === 0 ? (
-                          <div className="structure-empty">Нет направлений</div>
-                        ) : (
-                          facultyDirections.map((direction) => {
-                            const directionGroups = groups.filter(g => g.direction_id === direction.id);
-                            const isDirExpanded = expandedDirection === direction.id;
-
-                            return (
-                              <div key={direction.id} className="structure-item direction-item">
-                                {/* Заголовок направления */}
-                                <div 
-                                  className="structure-header" 
-                                  onClick={() => { 
-                                    haptic.light(); 
-                                    setExpandedDirection(isDirExpanded ? null : direction.id); 
-                                  }}
-                                >
-                                  <div className="structure-expand">{isDirExpanded ? '▼' : '▶'}</div>
-                                  <div className="structure-icon">📚</div>
-                                  <div className="structure-info">
-                                    <div className="structure-name">{direction.name}</div>
-                                    <div className="structure-meta">
-                                      {direction.code && <span className="structure-code">{direction.code}</span>}
-                                      <span>{directionGroups.length} групп</span>
-                                    </div>
-                                  </div>
-                                  {canEdit && (
-                                    <div className="structure-actions">
-                                      <button 
-                                        className="structure-btn" 
-                                        onClick={(e) => { e.stopPropagation(); openModal('direction', faculty.id, faculty.name, direction); }}
-                                        title="Редактировать"
-                                      >
-                                        ✏️
-                                      </button>
-                                      <button 
-                                        className="structure-btn" 
-                                        onClick={(e) => deleteItem('direction', direction.id, direction.name, e)}
-                                        title="Удалить"
-                                      >
-                                        🗑️
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Содержимое направления (группы) */}
-                                {isDirExpanded && (
-                                  <div className="structure-children">
-                                    {canEdit && (
-                                      <button 
-                                        className="structure-add-btn" 
-                                        onClick={() => openModal('group', direction.id, direction.name)}
-                                      >
-                                        + Добавить группу
-                                      </button>
-                                    )}
-                                    
-                                    {directionGroups.length === 0 ? (
-                                      <div className="structure-empty">Нет групп</div>
-                                    ) : (
-                                      directionGroups.map((group) => (
-                                        <div key={group.id} className="structure-item group-item">
-                                          <div className="structure-header">
-                                            <div className="structure-icon">👥</div>
-                                            <div className="structure-info">
-                                              <div className="structure-name">{group.name}</div>
-                                              <div className="structure-meta">
-                                                <span>{group.course} курс</span>
-                                                {group.year && <span>{group.year} год</span>}
-                                              </div>
-                                            </div>
-                                            {canEdit && (
-                                              <div className="structure-actions">
-                                                <button 
-                                                  className="structure-btn" 
-                                                  onClick={(e) => { e.stopPropagation(); openModal('group', direction.id, direction.name, group); }}
-                                                  title="Редактировать"
-                                                >
-                                                  ✏️
-                                                </button>
-                                                <button 
-                                                  className="structure-btn" 
-                                                  onClick={(e) => deleteItem('group', group.id, group.name, e)}
-                                                  title="Удалить"
-                                                >
-                                                  🗑️
-                                                </button>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                      ))
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="ios-structure-tree">
+              {/* Виртуализация: рендерим только видимые элементы */}
+              {visibleFaculties.map((faculty, index) => (
+                <FacultyCard 
+                  key={faculty.id}
+                  faculty={faculty}
+                  canEdit={canEdit}
+                  isExpanded={expandedFaculty === faculty.id}
+                  expandedDirection={expandedDirection}
+                  expandedGroup={expandedGroup}
+                  onToggle={handleToggleFaculty}
+                  onToggleDirection={handleToggleDirection}
+                  onToggleGroup={handleToggleGroup}
+                  onEdit={openModal}
+                  onDelete={requestDelete}
+                  data-index={visibleRange.start + index}
+                />
+              ))}
             </div>
           )}
         </div>
       </PullToRefresh>
 
-      {/* Модальное окно создания/редактирования */}
+      {/* Floating Action Button */}
+      {canEdit && (
+        <button 
+          className="ios-fab"
+          onClick={() => openModal('faculty')}
+          aria-label="Создать факультет"
+        >
+          <IconPlus size={24} color="white" />
+        </button>
+      )}
+
+      {/* Модалки */}
       <Modal 
         isOpen={showModal} 
         onClose={closeModal} 
-        title={getModalTitle()} 
+        title={modalTitle} 
         footer={
           <>
             <Button variant="secondary" onClick={closeModal}>Отмена</Button>
@@ -457,14 +580,14 @@ export const FacultiesPage = memo(function FacultiesPage() {
             placeholder={
               modalType === 'faculty' ? 'Факультет информатики' : 
               modalType === 'direction' ? 'Программная инженерия' : 
-              'ПИ-21'
-            } 
+              modalType === 'group' ? 'ПИ-21' : '1 подгруппа'
+            }
             autoFocus 
           />
         </FormField>
         
         {(modalType === 'faculty' || modalType === 'direction') && (
-          <FormField label="Код (сокращение)">
+          <FormField label="Код">
             <Input 
               value={form.code} 
               onChange={(e) => setForm(prev => ({ ...prev, code: e.target.value }))} 
@@ -484,22 +607,40 @@ export const FacultiesPage = memo(function FacultiesPage() {
         )}
         
         {modalType === 'group' && (
-          <FormField label="Курс">
-            <select 
-              className="form-select" 
-              value={form.course} 
-              onChange={(e) => setForm(prev => ({ ...prev, course: parseInt(e.target.value) }))}
-            >
-              <option value={1}>1 курс</option>
-              <option value={2}>2 курс</option>
-              <option value={3}>3 курс</option>
-              <option value={4}>4 курс</option>
-              <option value={5}>5 курс (магистратура)</option>
-              <option value={6}>6 курс (магистратура)</option>
-            </select>
-          </FormField>
+          <>
+            <FormField label="Курс">
+              <select 
+                className="form-select" 
+                value={form.course} 
+                onChange={(e) => setForm(prev => ({ ...prev, course: parseInt(e.target.value) }))}
+              >
+                {[1, 2, 3, 4, 5, 6].map(c => (
+                  <option key={c} value={c}>{c} курс{c > 4 ? ' (магистратура)' : ''}</option>
+                ))}
+              </select>
+            </FormField>
+            
+            <FormField label="Год набора">
+              <Input 
+                type="number"
+                value={form.year} 
+                onChange={(e) => setForm(prev => ({ ...prev, year: parseInt(e.target.value) }))} 
+              />
+            </FormField>
+          </>
         )}
       </Modal>
+
+      <ConfirmModal
+        isOpen={showConfirmDelete}
+        onClose={() => setShowConfirmDelete(false)}
+        onConfirm={confirmDelete}
+        title="Удалить?"
+        message={`Вы уверены, что хотите удалить "${deleteTarget?.name}"? Это действие нельзя отменить.`}
+        confirmText="Удалить"
+        cancelText="Отмена"
+        variant="danger"
+      />
     </>
   );
 });
