@@ -1,7 +1,3 @@
-/**
- * UniClub — iOS 26 Liquid Glass Design System
- * ИСПРАВЛЕНО: Убран битый CSS в конце, запрет горизонтальной прокрутки
- */
 
 :root {
   --sp-2: 2px; --sp-4: 4px; --sp-6: 6px; --sp-8: 8px; --sp-12: 12px; --sp-16: 16px;
@@ -2156,3 +2152,818 @@ body {
     padding-bottom: calc(var(--sp-16) + env(safe-area-inset-bottom)); 
   }
 }
+:root {
+  /* Liquid Glass Colors */
+  --glass-ultra-thin: rgba(255, 255, 255, 0.35);
+  --glass-thin: rgba(255, 255, 255, 0.55);
+  --glass-medium: rgba(255, 255, 255, 0.75);
+  --glass-thick: rgba(255, 255, 255, 0.88);
+  
+  /* Gradients */
+  --gradient-blue: linear-gradient(135deg, #007AFF 0%, #5856D6 100%);
+  --gradient-purple: linear-gradient(135deg, #5856D6 0%, #BF5AF2 100%);
+  --gradient-green: linear-gradient(135deg, #30D158 0%, #00C7BE 100%);
+  --gradient-orange: linear-gradient(135deg, #FF9F0A 0%, #FF375F 100%);
+  
+  /* Shadows with color tint */
+  --shadow-blue: 0 8px 32px rgba(0, 122, 255, 0.25);
+  --shadow-purple: 0 8px 32px rgba(88, 86, 214, 0.25);
+  --shadow-green: 0 8px 32px rgba(48, 209, 88, 0.25);
+  --shadow-orange: 0 8px 32px rgba(255, 159, 10, 0.25);
+  
+  /* Spring Animation */
+  --spring-duration: 0.5s;
+  --spring-easing: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --glass-ultra-thin: rgba(44, 44, 46, 0.35);
+    --glass-thin: rgba(44, 44, 46, 0.55);
+    --glass-medium: rgba(44, 44, 46, 0.75);
+    --glass-thick: rgba(44, 44, 46, 0.88);
+  }
+}
+
+/* ========== FLOATING SEARCH BAR ========== */
+
+.ios-search-container {
+  position: sticky;
+  top: calc(var(--safe-top) + var(--sp-16));
+  z-index: 100;
+  padding: 0 var(--sp-16) var(--sp-16);
+  margin: calc(-1 * var(--sp-16)) calc(-1 * var(--sp-16)) var(--sp-20);
+  contain: layout style paint;
+}
+
+.ios-search-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-12);
+  height: 52px;
+  padding: 0 var(--sp-20);
+  background: var(--glass-medium);
+  backdrop-filter: blur(60px) saturate(180%);
+  -webkit-backdrop-filter: blur(60px) saturate(180%);
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--glass-border);
+  box-shadow: 
+    0 8px 32px var(--glass-shadow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.05);
+  transition: all 0.3s var(--spring-easing);
+  will-change: transform, box-shadow;
+}
+
+.ios-search-bar:focus-within {
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: 
+    0 12px 48px var(--glass-shadow),
+    0 0 0 4px rgba(0, 122, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.ios-search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--text-primary);
+  outline: none;
+  min-width: 0;
+}
+
+.ios-search-input::placeholder {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.ios-search-clear {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--fill-secondary);
+  color: var(--text-tertiary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-liquid);
+  flex-shrink: 0;
+}
+
+.ios-search-clear:hover {
+  background: var(--fill-primary);
+  transform: scale(1.1);
+}
+
+.ios-search-clear:active {
+  transform: scale(0.9);
+}
+
+/* ========== STRUCTURE PAGE ========== */
+
+.ios-structure-page {
+  padding-top: 0;
+  contain: layout style paint;
+}
+
+.ios-structure-tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-16);
+  contain: layout style;
+}
+
+/* ========== FACULTY CARD (iOS 26 LIQUID GLASS) ========== */
+
+.ios-faculty-card {
+  position: relative;
+  background: var(--glass-medium);
+  backdrop-filter: blur(60px) saturate(200%);
+  -webkit-backdrop-filter: blur(60px) saturate(200%);
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--glass-border);
+  overflow: hidden;
+  box-shadow: 
+    0 12px 48px var(--glass-shadow),
+    inset 0 2px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.05);
+  transition: all 0.4s var(--spring-easing);
+  will-change: transform, box-shadow;
+  contain: layout style paint;
+}
+
+.ios-faculty-card:hover {
+  transform: translateY(-4px) scale(1.005);
+  box-shadow: 
+    0 20px 64px var(--glass-shadow),
+    0 0 0 1px rgba(0, 122, 255, 0.1),
+    inset 0 2px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* ========== CARD HEADER ========== */
+
+.ios-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-16);
+  padding: var(--sp-20);
+  cursor: pointer;
+  transition: background 0.2s var(--ease-liquid);
+  position: relative;
+  contain: layout style paint;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ios-card-header::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--fill-tertiary);
+  opacity: 0;
+  transition: opacity 0.15s var(--ease-liquid);
+  pointer-events: none;
+}
+
+.ios-card-header:active::after {
+  opacity: 1;
+}
+
+.ios-card-header.nested {
+  padding: var(--sp-16);
+  background: var(--glass-ultra-thin);
+}
+
+.ios-card-header.nested-2 {
+  padding: var(--sp-12);
+  background: var(--glass-thin);
+}
+
+.ios-card-header.leaf {
+  padding: var(--sp-12);
+  background: transparent;
+  cursor: default;
+}
+
+.ios-card-header.leaf::after {
+  display: none;
+}
+
+/* ========== GRADIENT ICON CIRCLES ========== */
+
+.ios-icon-circle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  transition: all 0.3s var(--spring-easing);
+  will-change: transform;
+  contain: layout style paint;
+}
+
+.blue-gradient {
+  width: 60px;
+  height: 60px;
+  background: var(--gradient-blue);
+}
+
+.purple-gradient {
+  width: 48px;
+  height: 48px;
+  background: var(--gradient-purple);
+}
+
+.green-gradient {
+  width: 40px;
+  height: 40px;
+  background: var(--gradient-green);
+}
+
+.orange-gradient {
+  width: 32px;
+  height: 32px;
+  background: var(--gradient-orange);
+}
+
+.ios-card-header:hover .ios-icon-circle {
+  transform: scale(1.05) rotate(5deg);
+}
+
+.ios-card-header:active .ios-icon-circle {
+  transform: scale(0.95);
+}
+
+/* ========== CARD CONTENT ========== */
+
+.ios-card-content {
+  flex: 1;
+  min-width: 0;
+  contain: layout style;
+}
+
+.ios-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-6);
+}
+
+.ios-card-title {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.ios-card-title.small {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.ios-card-title.tiny {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.ios-card-title.micro {
+  font-size: var(--text-base);
+  font-weight: 500;
+}
+
+/* ========== BADGES (iOS 26 STYLE) ========== */
+
+.ios-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 var(--sp-10);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s var(--ease-liquid);
+}
+
+.ios-badge.blue {
+  background: rgba(0, 122, 255, 0.15);
+  color: var(--blue);
+  box-shadow: 0 0 0 0.5px rgba(0, 122, 255, 0.2);
+}
+
+.ios-badge.purple {
+  background: rgba(88, 86, 214, 0.15);
+  color: var(--indigo);
+  box-shadow: 0 0 0 0.5px rgba(88, 86, 214, 0.2);
+}
+
+.ios-badge.green {
+  background: rgba(48, 209, 88, 0.15);
+  color: var(--green);
+  box-shadow: 0 0 0 0.5px rgba(48, 209, 88, 0.2);
+}
+
+.ios-badge.orange {
+  background: rgba(255, 159, 10, 0.15);
+  color: var(--orange);
+  box-shadow: 0 0 0 0.5px rgba(255, 159, 10, 0.2);
+}
+
+.ios-badge.outline {
+  background: var(--fill-tertiary);
+  color: var(--text-secondary);
+  box-shadow: 0 0 0 0.5px var(--separator);
+}
+
+.ios-badges-row {
+  display: flex;
+  gap: var(--sp-6);
+  flex-wrap: wrap;
+}
+
+/* ========== STATS ========== */
+
+.ios-card-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+.ios-card-stats.small {
+  font-size: var(--text-xs);
+}
+
+.ios-card-stats.tiny {
+  font-size: 11px;
+}
+
+.ios-stat-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  white-space: nowrap;
+}
+
+.ios-stat-separator {
+  opacity: 0.5;
+}
+
+.ios-card-description {
+  margin-top: var(--sp-8);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ========== ACTION BUTTONS (GLASSMORPHISM) ========== */
+
+.ios-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  flex-shrink: 0;
+  contain: layout style;
+}
+
+.ios-card-actions.compact {
+  gap: var(--sp-4);
+}
+
+.ios-action-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--glass-thin);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 0.5px solid var(--glass-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.2s var(--spring-easing);
+  will-change: transform;
+  flex-shrink: 0;
+}
+
+.ios-action-btn.small {
+  width: 36px;
+  height: 36px;
+}
+
+.ios-action-btn.tiny {
+  width: 32px;
+  height: 32px;
+}
+
+.ios-action-btn.micro {
+  width: 28px;
+  height: 28px;
+}
+
+.ios-action-btn:hover {
+  transform: scale(1.1);
+}
+
+.ios-action-btn:active {
+  transform: scale(0.9);
+}
+
+.ios-action-btn.edit {
+  color: var(--blue);
+}
+
+.ios-action-btn.edit:hover {
+  background: rgba(0, 122, 255, 0.15);
+  border-color: rgba(0, 122, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.2);
+}
+
+.ios-action-btn.delete {
+  color: var(--red);
+}
+
+.ios-action-btn.delete:hover {
+  background: rgba(255, 69, 58, 0.15);
+  border-color: rgba(255, 69, 58, 0.3);
+  box-shadow: 0 4px 12px rgba(255, 69, 58, 0.2);
+}
+
+/* ========== EXPAND INDICATOR ========== */
+
+.ios-expand-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  transition: transform 0.3s var(--spring-easing);
+  flex-shrink: 0;
+}
+
+.ios-expand-indicator.small,
+.ios-expand-indicator.tiny {
+  transform: scale(0.9);
+}
+
+/* ========== CARD CHILDREN (EXPANDABLE CONTENT) ========== */
+
+.ios-card-children {
+  padding: 0 var(--sp-20) var(--sp-20);
+  animation: expandSpring var(--spring-duration) var(--spring-easing);
+  contain: layout style;
+}
+
+.ios-card-children.nested {
+  padding: 0 var(--sp-16) var(--sp-16);
+  padding-left: var(--sp-48);
+}
+
+.ios-card-children.nested-2 {
+  padding: 0 var(--sp-12) var(--sp-12);
+  padding-left: var(--sp-40);
+}
+
+@keyframes expandSpring {
+  0% {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.95);
+  }
+  60% {
+    transform: translateY(2px) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ========== NESTED CARDS ========== */
+
+.ios-directions-list,
+.ios-groups-list,
+.ios-subgroups-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-12);
+  contain: layout style;
+}
+
+.ios-direction-card,
+.ios-group-card,
+.ios-subgroup-card {
+  background: var(--glass-ultra-thin);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border-radius: var(--radius-lg);
+  border: 0.5px solid var(--glass-border-subtle);
+  overflow: hidden;
+  transition: all 0.3s var(--spring-easing);
+  contain: layout style paint;
+}
+
+.ios-direction-card:hover,
+.ios-group-card:hover {
+  background: var(--glass-thin);
+  border-color: var(--glass-border);
+  box-shadow: 0 4px 16px var(--glass-shadow);
+  transform: translateX(2px);
+}
+
+.ios-subgroup-card {
+  background: transparent;
+  border: 0.5px solid var(--separator);
+}
+
+.ios-subgroup-card:hover {
+  background: var(--fill-tertiary);
+  transform: translateX(2px);
+}
+
+/* ========== ADD BUTTON ========== */
+
+.ios-add-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-10);
+  width: 100%;
+  height: 48px;
+  margin-bottom: var(--sp-12);
+  background: var(--glass-thin);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1.5px dashed var(--glass-border);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  font-family: var(--font);
+  color: var(--blue);
+  cursor: pointer;
+  transition: all 0.25s var(--spring-easing);
+  will-change: transform, background;
+}
+
+.ios-add-button.small {
+  height: 42px;
+  font-size: var(--text-xs);
+}
+
+.ios-add-button.tiny {
+  height: 36px;
+  font-size: 11px;
+}
+
+.ios-add-button:hover {
+  background: rgba(0, 122, 255, 0.08);
+  border-color: var(--blue);
+  border-style: solid;
+  transform: scale(1.01);
+}
+
+.ios-add-button:active {
+  transform: scale(0.98);
+}
+
+.ios-add-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: var(--blue);
+  color: white;
+  flex-shrink: 0;
+}
+
+.ios-add-icon.small {
+  width: 22px;
+  height: 22px;
+}
+
+.ios-add-icon.tiny {
+  width: 20px;
+  height: 20px;
+}
+
+/* ========== EMPTY STATE ========== */
+
+.ios-empty-state {
+  padding: var(--sp-20);
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  background: var(--fill-tertiary);
+  border-radius: var(--radius-md);
+}
+
+.ios-empty-state.small {
+  padding: var(--sp-16);
+  font-size: var(--text-xs);
+}
+
+.ios-empty-state.tiny {
+  padding: var(--sp-12);
+  font-size: 11px;
+}
+
+/* ========== FLOATING ACTION BUTTON ========== */
+
+.ios-fab {
+  position: fixed;
+  right: var(--sp-20);
+  bottom: calc(var(--tab-bar-height) + var(--safe-bottom) + var(--sp-20));
+  width: 60px;
+  height: 60px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--gradient-blue);
+  box-shadow: 
+    0 8px 24px rgba(0, 122, 255, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 900;
+  transition: all 0.3s var(--spring-easing);
+  will-change: transform;
+}
+
+.ios-fab:hover {
+  transform: scale(1.1) rotate(90deg);
+  box-shadow: 
+    0 12px 32px rgba(0, 122, 255, 0.45),
+    0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.ios-fab:active {
+  transform: scale(0.95) rotate(90deg);
+}
+
+@media (min-width: 1025px) {
+  .ios-fab {
+    display: none;
+  }
+}
+
+/* ========== RESPONSIVE OPTIMIZATIONS ========== */
+
+@media (max-width: 768px) {
+  .ios-search-container {
+    top: calc(var(--safe-top) + var(--sp-12));
+    padding: 0 var(--sp-12) var(--sp-12);
+    margin: calc(-1 * var(--sp-12)) calc(-1 * var(--sp-12)) var(--sp-16);
+  }
+  
+  .ios-search-bar {
+    height: 48px;
+    padding: 0 var(--sp-16);
+  }
+  
+  .ios-structure-tree {
+    gap: var(--sp-12);
+  }
+  
+  .ios-faculty-card {
+    border-radius: var(--radius-xl);
+  }
+  
+  .ios-card-header {
+    padding: var(--sp-16);
+    gap: var(--sp-12);
+  }
+  
+  .blue-gradient {
+    width: 52px;
+    height: 52px;
+  }
+  
+  .purple-gradient {
+    width: 44px;
+    height: 44px;
+  }
+  
+  .green-gradient {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .orange-gradient {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .ios-card-title {
+    font-size: var(--text-lg);
+  }
+  
+  .ios-card-children.nested {
+    padding-left: var(--sp-32);
+  }
+  
+  .ios-card-children.nested-2 {
+    padding-left: var(--sp-24);
+  }
+}
+
+/* ========== PERFORMANCE OPTIMIZATIONS ========== */
+
+/* Содержимое изоляция для карточек */
+.ios-faculty-card,
+.ios-direction-card,
+.ios-group-card {
+  contain: layout style paint;
+}
+
+/* Hardware acceleration */
+.ios-faculty-card,
+.ios-action-btn,
+.ios-icon-circle,
+.ios-fab {
+  transform: translate3d(0, 0, 0);
+}
+
+/* Prevent layout shift during animations */
+.ios-card-children {
+  contain: layout;
+}
+
+/* Optimize hover effects */
+@media (hover: hover) and (pointer: fine) {
+  .ios-card-header:hover,
+  .ios-action-btn:hover,
+  .ios-add-button:hover {
+    will-change: transform;
+  }
+}
+
+/* ========== DARK MODE ENHANCEMENTS ========== */
+
+@media (prefers-color-scheme: dark) {
+  .ios-faculty-card {
+    box-shadow: 
+      0 12px 48px rgba(0, 0, 0, 0.6),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+  
+  .ios-icon-circle {
+    box-shadow: 
+      0 4px 16px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+  
+  .ios-search-bar {
+    box-shadow: 
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* ========== ACCESSIBILITY ========== */
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  
+  .ios-faculty-card:hover,
+  .ios-action-btn:hover {
+    transform: none;
+  }
+}
+
+/* Focus styles for keyboard navigation */
+.ios-card-header:focus-visible,
+.ios-action-btn:focus-visible,
+.ios-add-button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+
