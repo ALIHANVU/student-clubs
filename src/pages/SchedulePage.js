@@ -30,19 +30,11 @@ export const SchedulePage = memo(function SchedulePage() {
   const [groups, setGroups] = useState([]);
   const [subgroups, setSubgroups] = useState([]);
   
-  // Выбранные значения - загружаем из localStorage
-  const [selectedFaculty, setSelectedFaculty] = useState(() => 
-    localStorage.getItem('uniclub_selected_faculty') || ''
-  );
-  const [selectedDirection, setSelectedDirection] = useState(() => 
-    localStorage.getItem('uniclub_selected_direction') || ''
-  );
-  const [selectedGroup, setSelectedGroup] = useState(() => 
-    localStorage.getItem('uniclub_selected_group') || ''
-  );
-  const [selectedSubgroup, setSelectedSubgroup] = useState(() => 
-    localStorage.getItem('uniclub_selected_subgroup') || ''
-  );
+  // Выбранные значения
+  const [selectedFaculty, setSelectedFaculty] = useState('');
+  const [selectedDirection, setSelectedDirection] = useState('');
+  const [selectedGroup, setSelectedGroup] = useState('');
+  const [selectedSubgroup, setSelectedSubgroup] = useState('');
   
   // Расписание
   const [schedule, setSchedule] = useState([]);
@@ -114,45 +106,56 @@ export const SchedulePage = memo(function SchedulePage() {
       setGroups(groupsData);
       setSubgroups(subgroupsData);
       
-      // Проверяем сохранённые значения из localStorage
+      // Пытаемся восстановить из localStorage
       const savedFaculty = localStorage.getItem('uniclub_selected_faculty');
       const savedDirection = localStorage.getItem('uniclub_selected_direction');
       const savedGroup = localStorage.getItem('uniclub_selected_group');
       const savedSubgroup = localStorage.getItem('uniclub_selected_subgroup');
       
-      // Если есть сохранённые значения и они валидны - используем их
-      if (savedFaculty && facultiesData.find(f => f.id === savedFaculty)) {
-        setSelectedFaculty(savedFaculty);
+      let restored = false;
+      
+      // Проверяем, что сохранённые значения валидны
+      if (savedGroup && groupsData.find(g => g.id === savedGroup)) {
+        const group = groupsData.find(g => g.id === savedGroup);
+        const direction = directionsData.find(d => d.id === group.direction_id);
+        const faculty = facultiesData.find(f => f.id === direction?.faculty_id);
         
-        if (savedDirection && directionsData.find(d => d.id === savedDirection)) {
-          setSelectedDirection(savedDirection);
+        if (faculty && direction) {
+          console.log('Restoring from localStorage:', { faculty: faculty.name, direction: direction.name, group: group.name });
+          setSelectedFaculty(faculty.id);
+          setSelectedDirection(direction.id);
+          setSelectedGroup(group.id);
           
-          if (savedGroup && groupsData.find(g => g.id === savedGroup)) {
-            setSelectedGroup(savedGroup);
-            
-            if (savedSubgroup && subgroupsData.find(s => s.id === savedSubgroup)) {
-              setSelectedSubgroup(savedSubgroup);
-            }
+          if (savedSubgroup && subgroupsData.find(s => s.id === savedSubgroup && s.group_id === group.id)) {
+            setSelectedSubgroup(savedSubgroup);
           }
+          
+          restored = true;
         }
       }
-      // Иначе автовыбор для пользователя с группой
-      else if (user.group_id) {
+      
+      // Если не удалось восстановить - пробуем автовыбор из профиля пользователя
+      if (!restored && user.group_id) {
         const userGroup = groupsData.find(gr => gr.id === user.group_id);
         if (userGroup) {
           const userDirection = directionsData.find(dir => dir.id === userGroup.direction_id);
           if (userDirection) {
-            setSelectedFaculty(userDirection.faculty_id);
-            setSelectedDirection(userDirection.id);
-            localStorage.setItem('uniclub_selected_faculty', userDirection.faculty_id);
-            localStorage.setItem('uniclub_selected_direction', userDirection.id);
-          }
-          setSelectedGroup(userGroup.id);
-          localStorage.setItem('uniclub_selected_group', userGroup.id);
-          
-          if (user.subgroup_id) {
-            setSelectedSubgroup(user.subgroup_id);
-            localStorage.setItem('uniclub_selected_subgroup', user.subgroup_id);
+            const userFaculty = facultiesData.find(f => f.id === userDirection.faculty_id);
+            if (userFaculty) {
+              console.log('Auto-selecting user group:', userGroup.name);
+              setSelectedFaculty(userFaculty.id);
+              setSelectedDirection(userDirection.id);
+              setSelectedGroup(userGroup.id);
+              
+              localStorage.setItem('uniclub_selected_faculty', userFaculty.id);
+              localStorage.setItem('uniclub_selected_direction', userDirection.id);
+              localStorage.setItem('uniclub_selected_group', userGroup.id);
+              
+              if (user.subgroup_id) {
+                setSelectedSubgroup(user.subgroup_id);
+                localStorage.setItem('uniclub_selected_subgroup', user.subgroup_id);
+              }
+            }
           }
         }
       }
@@ -623,6 +626,29 @@ export const SchedulePage = memo(function SchedulePage() {
           
           {/* СЕЛЕКТОРЫ */}
           <div className="schedule-selectors">
+            {/* Кнопка сброса */}
+            {(selectedFaculty || selectedDirection || selectedGroup) && (
+              <div style={{ marginBottom: '8px', textAlign: 'right' }}>
+                <button 
+                  className="btn btn-small btn-secondary"
+                  onClick={() => {
+                    setSelectedFaculty('');
+                    setSelectedDirection('');
+                    setSelectedGroup('');
+                    setSelectedSubgroup('');
+                    setSchedule([]);
+                    localStorage.removeItem('uniclub_selected_faculty');
+                    localStorage.removeItem('uniclub_selected_direction');
+                    localStorage.removeItem('uniclub_selected_group');
+                    localStorage.removeItem('uniclub_selected_subgroup');
+                    notify.info('Выбор сброшен');
+                  }}
+                >
+                  ✕ Сбросить
+                </button>
+              </div>
+            )}
+            
             {/* Факультет */}
             <div className="selector-row">
               <select className="form-select" value={selectedFaculty} onChange={handleFacultyChange}>
