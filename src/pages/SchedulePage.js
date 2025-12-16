@@ -106,60 +106,6 @@ export const SchedulePage = memo(function SchedulePage() {
       setGroups(groupsData);
       setSubgroups(subgroupsData);
       
-      // Пытаемся восстановить из localStorage
-      const savedFaculty = localStorage.getItem('uniclub_selected_faculty');
-      const savedDirection = localStorage.getItem('uniclub_selected_direction');
-      const savedGroup = localStorage.getItem('uniclub_selected_group');
-      const savedSubgroup = localStorage.getItem('uniclub_selected_subgroup');
-      
-      let restored = false;
-      
-      // Проверяем, что сохранённые значения валидны
-      if (savedGroup && groupsData.find(g => g.id === savedGroup)) {
-        const group = groupsData.find(g => g.id === savedGroup);
-        const direction = directionsData.find(d => d.id === group.direction_id);
-        const faculty = facultiesData.find(f => f.id === direction?.faculty_id);
-        
-        if (faculty && direction) {
-          console.log('Restoring from localStorage:', { faculty: faculty.name, direction: direction.name, group: group.name });
-          setSelectedFaculty(faculty.id);
-          setSelectedDirection(direction.id);
-          setSelectedGroup(group.id);
-          
-          if (savedSubgroup && subgroupsData.find(s => s.id === savedSubgroup && s.group_id === group.id)) {
-            setSelectedSubgroup(savedSubgroup);
-          }
-          
-          restored = true;
-        }
-      }
-      
-      // Если не удалось восстановить - пробуем автовыбор из профиля пользователя
-      if (!restored && user.group_id) {
-        const userGroup = groupsData.find(gr => gr.id === user.group_id);
-        if (userGroup) {
-          const userDirection = directionsData.find(dir => dir.id === userGroup.direction_id);
-          if (userDirection) {
-            const userFaculty = facultiesData.find(f => f.id === userDirection.faculty_id);
-            if (userFaculty) {
-              console.log('Auto-selecting user group:', userGroup.name);
-              setSelectedFaculty(userFaculty.id);
-              setSelectedDirection(userDirection.id);
-              setSelectedGroup(userGroup.id);
-              
-              localStorage.setItem('uniclub_selected_faculty', userFaculty.id);
-              localStorage.setItem('uniclub_selected_direction', userDirection.id);
-              localStorage.setItem('uniclub_selected_group', userGroup.id);
-              
-              if (user.subgroup_id) {
-                setSelectedSubgroup(user.subgroup_id);
-                localStorage.setItem('uniclub_selected_subgroup', user.subgroup_id);
-              }
-            }
-          }
-        }
-      }
-      
     } catch (error) {
       console.error('Error loading structure:', error);
       notify.error('Ошибка загрузки данных');
@@ -171,11 +117,12 @@ export const SchedulePage = memo(function SchedulePage() {
   // ========== ЗАГРУЗКА РАСПИСАНИЯ ==========
   const loadSchedule = useCallback(async (groupId) => {
     if (!groupId) {
+      console.log('⚠️ loadSchedule: No group selected');
       setSchedule([]);
       return;
     }
     
-    console.log('Loading schedule for group:', groupId);
+    console.log('📚 Loading schedule for group:', groupId);
     setScheduleLoading(true);
     
     try {
@@ -186,10 +133,10 @@ export const SchedulePage = memo(function SchedulePage() {
         .order('start_time');
       
       if (error) throw error;
-      console.log('Schedule loaded:', data?.length, 'lessons');
+      console.log('✅ Schedule loaded:', data?.length, 'lessons');
       setSchedule(data || []);
     } catch (error) {
-      console.error('Error loading schedule:', error);
+      console.error('❌ Error loading schedule:', error);
       setSchedule([]);
     } finally {
       setScheduleLoading(false);
@@ -200,6 +147,73 @@ export const SchedulePage = memo(function SchedulePage() {
   useEffect(() => {
     loadStructure();
   }, [loadStructure]);
+
+  // Восстановление сохранённых значений ПОСЛЕ загрузки структуры
+  useEffect(() => {
+    if (structureLoading) return; // Ждём пока структура загрузится
+    if (faculties.length === 0) return; // Данных ещё нет
+    
+    // Проверяем, уже ли что-то выбрано
+    if (selectedGroup) {
+      console.log('Group already selected:', selectedGroup);
+      return;
+    }
+    
+    // Пытаемся восстановить из localStorage
+    const savedGroup = localStorage.getItem('uniclub_selected_group');
+    
+    if (savedGroup) {
+      const group = groups.find(g => g.id === savedGroup);
+      if (group) {
+        const direction = directions.find(d => d.id === group.direction_id);
+        const faculty = faculties.find(f => f.id === direction?.faculty_id);
+        
+        if (faculty && direction) {
+          console.log('✅ Restoring from localStorage:', { faculty: faculty.name, direction: direction.name, group: group.name });
+          setSelectedFaculty(faculty.id);
+          setSelectedDirection(direction.id);
+          setSelectedGroup(group.id);
+          
+          const savedSubgroup = localStorage.getItem('uniclub_selected_subgroup');
+          if (savedSubgroup && subgroups.find(s => s.id === savedSubgroup && s.group_id === group.id)) {
+            setSelectedSubgroup(savedSubgroup);
+          }
+          return;
+        } else {
+          console.log('❌ Saved group found but structure incomplete');
+          localStorage.removeItem('uniclub_selected_group');
+        }
+      } else {
+        console.log('❌ Saved group not found in database');
+        localStorage.removeItem('uniclub_selected_group');
+      }
+    }
+    
+    // Если не удалось восстановить - автовыбор из профиля
+    if (user.group_id) {
+      const userGroup = groups.find(g => g.id === user.group_id);
+      if (userGroup) {
+        const userDirection = directions.find(d => d.id === userGroup.direction_id);
+        const userFaculty = faculties.find(f => f.id === userDirection?.faculty_id);
+        
+        if (userFaculty && userDirection) {
+          console.log('✅ Auto-selecting user group:', userGroup.name);
+          setSelectedFaculty(userFaculty.id);
+          setSelectedDirection(userDirection.id);
+          setSelectedGroup(userGroup.id);
+          
+          localStorage.setItem('uniclub_selected_faculty', userFaculty.id);
+          localStorage.setItem('uniclub_selected_direction', userDirection.id);
+          localStorage.setItem('uniclub_selected_group', userGroup.id);
+          
+          if (user.subgroup_id) {
+            setSelectedSubgroup(user.subgroup_id);
+            localStorage.setItem('uniclub_selected_subgroup', user.subgroup_id);
+          }
+        }
+      }
+    }
+  }, [structureLoading, faculties, directions, groups, subgroups, user.group_id, user.subgroup_id, selectedGroup]);
 
   // Загрузка расписания при выборе группы
   useEffect(() => {
