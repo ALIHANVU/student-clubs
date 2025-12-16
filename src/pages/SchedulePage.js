@@ -30,11 +30,19 @@ export const SchedulePage = memo(function SchedulePage() {
   const [groups, setGroups] = useState([]);
   const [subgroups, setSubgroups] = useState([]);
   
-  // Выбранные значения
-  const [selectedFaculty, setSelectedFaculty] = useState('');
-  const [selectedDirection, setSelectedDirection] = useState('');
-  const [selectedGroup, setSelectedGroup] = useState('');
-  const [selectedSubgroup, setSelectedSubgroup] = useState('');
+  // Выбранные значения - загружаем из localStorage
+  const [selectedFaculty, setSelectedFaculty] = useState(() => 
+    localStorage.getItem('uniclub_selected_faculty') || ''
+  );
+  const [selectedDirection, setSelectedDirection] = useState(() => 
+    localStorage.getItem('uniclub_selected_direction') || ''
+  );
+  const [selectedGroup, setSelectedGroup] = useState(() => 
+    localStorage.getItem('uniclub_selected_group') || ''
+  );
+  const [selectedSubgroup, setSelectedSubgroup] = useState(() => 
+    localStorage.getItem('uniclub_selected_subgroup') || ''
+  );
   
   // Расписание
   const [schedule, setSchedule] = useState([]);
@@ -106,18 +114,45 @@ export const SchedulePage = memo(function SchedulePage() {
       setGroups(groupsData);
       setSubgroups(subgroupsData);
       
-      // Автовыбор для пользователя с группой
-      if (user.group_id) {
+      // Проверяем сохранённые значения из localStorage
+      const savedFaculty = localStorage.getItem('uniclub_selected_faculty');
+      const savedDirection = localStorage.getItem('uniclub_selected_direction');
+      const savedGroup = localStorage.getItem('uniclub_selected_group');
+      const savedSubgroup = localStorage.getItem('uniclub_selected_subgroup');
+      
+      // Если есть сохранённые значения и они валидны - используем их
+      if (savedFaculty && facultiesData.find(f => f.id === savedFaculty)) {
+        setSelectedFaculty(savedFaculty);
+        
+        if (savedDirection && directionsData.find(d => d.id === savedDirection)) {
+          setSelectedDirection(savedDirection);
+          
+          if (savedGroup && groupsData.find(g => g.id === savedGroup)) {
+            setSelectedGroup(savedGroup);
+            
+            if (savedSubgroup && subgroupsData.find(s => s.id === savedSubgroup)) {
+              setSelectedSubgroup(savedSubgroup);
+            }
+          }
+        }
+      }
+      // Иначе автовыбор для пользователя с группой
+      else if (user.group_id) {
         const userGroup = groupsData.find(gr => gr.id === user.group_id);
         if (userGroup) {
           const userDirection = directionsData.find(dir => dir.id === userGroup.direction_id);
           if (userDirection) {
             setSelectedFaculty(userDirection.faculty_id);
             setSelectedDirection(userDirection.id);
+            localStorage.setItem('uniclub_selected_faculty', userDirection.faculty_id);
+            localStorage.setItem('uniclub_selected_direction', userDirection.id);
           }
           setSelectedGroup(userGroup.id);
+          localStorage.setItem('uniclub_selected_group', userGroup.id);
+          
           if (user.subgroup_id) {
             setSelectedSubgroup(user.subgroup_id);
+            localStorage.setItem('uniclub_selected_subgroup', user.subgroup_id);
           }
         }
       }
@@ -224,6 +259,13 @@ export const SchedulePage = memo(function SchedulePage() {
     setSelectedGroup('');
     setSelectedSubgroup('');
     setSchedule([]);
+    
+    // Сохраняем в localStorage
+    localStorage.setItem('uniclub_selected_faculty', val);
+    localStorage.removeItem('uniclub_selected_direction');
+    localStorage.removeItem('uniclub_selected_group');
+    localStorage.removeItem('uniclub_selected_subgroup');
+    
     haptic.light();
   };
 
@@ -233,6 +275,12 @@ export const SchedulePage = memo(function SchedulePage() {
     setSelectedGroup('');
     setSelectedSubgroup('');
     setSchedule([]);
+    
+    // Сохраняем в localStorage
+    localStorage.setItem('uniclub_selected_direction', val);
+    localStorage.removeItem('uniclub_selected_group');
+    localStorage.removeItem('uniclub_selected_subgroup');
+    
     haptic.light();
   };
 
@@ -240,11 +288,21 @@ export const SchedulePage = memo(function SchedulePage() {
     const val = e.target.value;
     setSelectedGroup(val);
     setSelectedSubgroup('');
+    
+    // Сохраняем в localStorage
+    localStorage.setItem('uniclub_selected_group', val);
+    localStorage.removeItem('uniclub_selected_subgroup');
+    
     haptic.light();
   };
 
   const handleSubgroupChange = (e) => {
-    setSelectedSubgroup(e.target.value);
+    const val = e.target.value;
+    setSelectedSubgroup(val);
+    
+    // Сохраняем в localStorage
+    localStorage.setItem('uniclub_selected_subgroup', val);
+    
     haptic.light();
   };
 
@@ -444,6 +502,7 @@ export const SchedulePage = memo(function SchedulePage() {
         await loadStructure();
         // Автовыбор нового факультета
         setSelectedFaculty(result.data.id);
+        localStorage.setItem('uniclub_selected_faculty', result.data.id);
         
       } else if (structureModalType === 'direction') {
         if (!selectedFaculty) {
@@ -464,6 +523,7 @@ export const SchedulePage = memo(function SchedulePage() {
         await loadStructure();
         // Автовыбор нового направления
         setSelectedDirection(result.data.id);
+        localStorage.setItem('uniclub_selected_direction', result.data.id);
         
       } else if (structureModalType === 'group') {
         if (!selectedDirection) {
@@ -485,6 +545,7 @@ export const SchedulePage = memo(function SchedulePage() {
         await loadStructure();
         // Автовыбор новой группы
         setSelectedGroup(result.data.id);
+        localStorage.setItem('uniclub_selected_group', result.data.id);
         
       } else if (structureModalType === 'subgroup') {
         if (!selectedGroup) {
