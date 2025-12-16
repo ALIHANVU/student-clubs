@@ -1,6 +1,6 @@
 /**
- * SchedulePage — Полностью переработанная
- * Включает: управление структурой, расписание, уведомления для групп
+ * SchedulePage — Исправленная версия
+ * Фиксы: создание групп, отображение для студентов и старост
  */
 import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import { supabase, invalidateCache } from '../utils/supabase';
@@ -34,8 +34,12 @@ export const SchedulePage = memo(function SchedulePage() {
   
   // Расписание
   const [schedule, setSchedule] = useState([]);
-  const [activeDay, setActiveDay] = useState(new Date().getDay() || 1);
+  const [activeDay, setActiveDay] = useState(() => {
+    const today = new Date().getDay();
+    return today === 0 ? 1 : (today > 6 ? 1 : today);
+  });
   const [loading, setLoading] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false);
   
   // Модалки
   const [showLessonModal, setShowLessonModal] = useState(false);
@@ -85,28 +89,12 @@ export const SchedulePage = memo(function SchedulePage() {
       setGroups(g.data || []);
       setSubgroups(s.data || []);
       
-      // Если пользователь привязан к группе - выбираем её автоматически
-      if (user.group_id) {
-        const userGroup = g.data?.find(gr => gr.id === user.group_id);
-        if (userGroup) {
-          const userDirection = d.data?.find(dir => dir.id === userGroup.direction_id);
-          if (userDirection) {
-            setSelectedFaculty(userDirection.faculty_id);
-            setSelectedDirection(userDirection.id);
-          }
-          setSelectedGroup(userGroup.id);
-          if (user.subgroup_id) {
-            setSelectedSubgroup(user.subgroup_id);
-          }
-        }
-      } else if (f.data?.length > 0) {
-        // Для админа - выбираем первый факультет
-        setSelectedFaculty(f.data[0].id);
-      }
+      return { faculties: f.data || [], directions: d.data || [], groups: g.data || [], subgroups: s.data || [] };
     } catch (error) {
       console.error('Error loading structure:', error);
+      return { faculties: [], directions: [], groups: [], subgroups: [] };
     }
-  }, [user.group_id, user.subgroup_id]);
+  }, []);
 
   const loadSchedule = useCallback(async (groupId) => {
     if (!groupId) {
@@ -116,60 +104,94 @@ export const SchedulePage = memo(function SchedulePage() {
     }
     
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('schedules')
         .select('*, subgroups(name)')
         .eq('group_id', groupId)
         .order('start_time');
+      
+      if (error) throw error;
       setSchedule(data || []);
     } catch (error) {
       console.error('Error loading schedule:', error);
+      setSchedule([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // Начальная загрузка
   useEffect(() => {
-    loadStructure();
-  }, [loadStructure]);
+    const initData = async () => {
+      setLoading(true);
+      const data = await loadStructure();
+      
+      // Если пользователь привязан к группе - выбираем её автоматически
+      if (user.group_id && data.groups.length > 0) {
+        const userGroup = data.groups.find(gr => gr.id === user.group_id);
+        if (userGroup) {
+          const userDirection = data.directions.find(dir => dir.id === userGroup.direction_id);
+          if (userDirection) {
+            setSelectedFaculty(userDirection.faculty_id);
+            setSelectedDirection(userDirection.id);
+          }
+          setSelectedGroup(userGroup.id);
+          if (user.subgroup_id) {
+            setSelectedSubgroup(user.subgroup_id);
+          }
+        }
+      } else if (data.faculties.length > 0 && isMainAdmin) {
+        // Для админа - выбираем первый факультет
+        setSelectedFaculty(data.faculties[0].id);
+      }
+      
+      setDataLoaded(true);
+      setLoading(false);
+    };
+    
+    initData();
+  }, [user.group_id, user.subgroup_id, isMainAdmin, loadStructure]);
 
+  // Загрузка расписания при выборе группы
   useEffect(() => {
-    if (selectedGroup) {
+    if (selectedGroup && dataLoaded) {
       setLoading(true);
       loadSchedule(selectedGroup);
     }
-  }, [selectedGroup, loadSchedule]);
+  }, [selectedGroup, dataLoaded, loadSchedule]);
 
-  // При выборе факультета - сбрасываем направление и группу
+  // При выборе факультета - выбираем первое направление (только для админа)
   useEffect(() => {
-    if (selectedFaculty && !user.group_id) {
-      const firstDirection = directions.find(d => d.faculty_id === selectedFaculty);
-      if (firstDirection) {
-        setSelectedDirection(firstDirection.id);
+    if (selectedFaculty && dataLoaded && !user.group_id) {
+      const facultyDirections = directions.filter(d => d.faculty_id === selectedFaculty);
+      if (facultyDirections.length > 0) {
+        setSelectedDirection(facultyDirections[0].id);
       } else {
         setSelectedDirection(null);
         setSelectedGroup(null);
       }
     }
-  }, [selectedFaculty, directions, user.group_id]);
+  }, [selectedFaculty, directions, dataLoaded, user.group_id]);
 
-  // При выборе направления - выбираем первую группу
+  // При выборе направления - выбираем первую группу (только для админа)
   useEffect(() => {
-    if (selectedDirection && !user.group_id) {
-      const firstGroup = groups.find(g => g.direction_id === selectedDirection);
-      if (firstGroup) {
-        setSelectedGroup(firstGroup.id);
+    if (selectedDirection && dataLoaded && !user.group_id) {
+      const directionGroups = groups.filter(g => g.direction_id === selectedDirection);
+      if (directionGroups.length > 0) {
+        setSelectedGroup(directionGroups[0].id);
       } else {
         setSelectedGroup(null);
       }
     }
-  }, [selectedDirection, groups, user.group_id]);
+  }, [selectedDirection, groups, dataLoaded, user.group_id]);
 
   const handleRefresh = useCallback(async () => {
     setLoading(true);
     await loadStructure();
     if (selectedGroup) {
       await loadSchedule(selectedGroup);
+    } else {
+      setLoading(false);
     }
     notify.success('Обновлено');
   }, [loadStructure, loadSchedule, selectedGroup, notify]);
@@ -294,7 +316,7 @@ export const SchedulePage = memo(function SchedulePage() {
       haptic.success();
     } catch (error) {
       console.error('Error saving lesson:', error);
-      notify.error('Ошибка сохранения');
+      notify.error('Ошибка сохранения: ' + (error.message || ''));
       haptic.error();
     } finally {
       setSubmitting(false);
@@ -351,7 +373,7 @@ export const SchedulePage = memo(function SchedulePage() {
       haptic.success();
     } catch (error) {
       console.error('Error sending notification:', error);
-      notify.error('Ошибка отправки');
+      notify.error('Ошибка отправки: ' + (error.message || ''));
       haptic.error();
     } finally {
       setSubmitting(false);
@@ -377,28 +399,48 @@ export const SchedulePage = memo(function SchedulePage() {
       let error;
       
       if (structureModalType === 'faculty') {
-        ({ error } = await supabase.from('faculties').insert({
+        const { error: e } = await supabase.from('faculties').insert({
           name: structureForm.name.trim(),
-          code: structureForm.code.trim() || null
-        }));
+          code: structureForm.code.trim() || null,
+          description: null
+        });
+        error = e;
       } else if (structureModalType === 'direction') {
-        ({ error } = await supabase.from('directions').insert({
+        if (!structureForm.parent_id) {
+          notify.error('Не выбран факультет');
+          setSubmitting(false);
+          return;
+        }
+        const { error: e } = await supabase.from('directions').insert({
           name: structureForm.name.trim(),
           code: structureForm.code.trim() || null,
           faculty_id: structureForm.parent_id
-        }));
+        });
+        error = e;
       } else if (structureModalType === 'group') {
-        ({ error } = await supabase.from('study_groups').insert({
+        if (!structureForm.parent_id) {
+          notify.error('Не выбрано направление');
+          setSubmitting(false);
+          return;
+        }
+        const { error: e } = await supabase.from('study_groups').insert({
           name: structureForm.name.trim(),
           direction_id: structureForm.parent_id,
           course: 1,
           year: new Date().getFullYear()
-        }));
+        });
+        error = e;
       } else if (structureModalType === 'subgroup') {
-        ({ error } = await supabase.from('subgroups').insert({
+        if (!structureForm.parent_id) {
+          notify.error('Не выбрана группа');
+          setSubmitting(false);
+          return;
+        }
+        const { error: e } = await supabase.from('subgroups').insert({
           name: structureForm.name.trim(),
           group_id: structureForm.parent_id
-        }));
+        });
+        error = e;
       }
       
       if (error) throw error;
@@ -406,11 +448,26 @@ export const SchedulePage = memo(function SchedulePage() {
       const names = { faculty: 'Факультет', direction: 'Направление', group: 'Группа', subgroup: 'Подгруппа' };
       notify.success(`${names[structureModalType]} создан`);
       setShowStructureModal(false);
-      loadStructure();
+      
+      // Перезагружаем структуру
+      const newData = await loadStructure();
+      
+      // Автоматически выбираем созданный элемент
+      if (structureModalType === 'faculty' && newData.faculties.length > 0) {
+        const newFaculty = newData.faculties.find(f => f.name === structureForm.name.trim());
+        if (newFaculty) setSelectedFaculty(newFaculty.id);
+      } else if (structureModalType === 'direction' && newData.directions.length > 0) {
+        const newDir = newData.directions.find(d => d.name === structureForm.name.trim());
+        if (newDir) setSelectedDirection(newDir.id);
+      } else if (structureModalType === 'group' && newData.groups.length > 0) {
+        const newGroup = newData.groups.find(g => g.name === structureForm.name.trim());
+        if (newGroup) setSelectedGroup(newGroup.id);
+      }
+      
       haptic.success();
     } catch (error) {
       console.error('Error saving structure:', error);
-      notify.error('Ошибка сохранения');
+      notify.error('Ошибка сохранения: ' + (error.message || ''));
       haptic.error();
     } finally {
       setSubmitting(false);
@@ -431,6 +488,9 @@ export const SchedulePage = memo(function SchedulePage() {
     };
     return names[structureModalType];
   }, [structureModalType]);
+
+  // Определяем, заблокированы ли селекторы (для студентов и старост с группой)
+  const selectorsDisabled = !!user.group_id;
 
   return (
     <>
@@ -471,12 +531,14 @@ export const SchedulePage = memo(function SchedulePage() {
                 className="form-select" 
                 value={selectedFaculty || ''} 
                 onChange={(e) => { 
-                  setSelectedFaculty(e.target.value); 
-                  setSelectedDirection(null);
-                  setSelectedGroup(null);
+                  setSelectedFaculty(e.target.value || null); 
+                  if (!e.target.value) {
+                    setSelectedDirection(null);
+                    setSelectedGroup(null);
+                  }
                   haptic.light(); 
                 }}
-                disabled={!!user.group_id}
+                disabled={selectorsDisabled}
               >
                 <option value="">Выберите факультет</option>
                 {faculties.map(f => (
@@ -495,11 +557,13 @@ export const SchedulePage = memo(function SchedulePage() {
                   className="form-select" 
                   value={selectedDirection || ''} 
                   onChange={(e) => { 
-                    setSelectedDirection(e.target.value);
-                    setSelectedGroup(null);
+                    setSelectedDirection(e.target.value || null);
+                    if (!e.target.value) {
+                      setSelectedGroup(null);
+                    }
                     haptic.light(); 
                   }}
-                  disabled={!!user.group_id}
+                  disabled={selectorsDisabled}
                 >
                   <option value="">Выберите направление</option>
                   {filteredDirections.map(d => (
@@ -519,12 +583,14 @@ export const SchedulePage = memo(function SchedulePage() {
                   className="form-select" 
                   value={selectedGroup || ''} 
                   onChange={(e) => { 
-                    setSelectedGroup(e.target.value);
+                    setSelectedGroup(e.target.value || null);
                     setSelectedSubgroup(null);
-                    setLoading(true);
+                    if (e.target.value) {
+                      setLoading(true);
+                    }
                     haptic.light(); 
                   }}
-                  disabled={!!user.group_id}
+                  disabled={selectorsDisabled}
                 >
                   <option value="">Выберите группу</option>
                   {filteredGroups.map(g => (
@@ -595,8 +661,8 @@ export const SchedulePage = memo(function SchedulePage() {
           {!selectedGroup ? (
             <EmptyState 
               icon="📚" 
-              title="Выберите группу" 
-              text="Выберите факультет, направление и группу для просмотра расписания" 
+              title={user.group_id ? "Загрузка..." : "Выберите группу"} 
+              text={user.group_id ? "Подождите, загружаем расписание" : "Выберите факультет, направление и группу для просмотра расписания"} 
             />
           ) : loading ? (
             <SkeletonList count={4} />
