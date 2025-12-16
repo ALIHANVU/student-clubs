@@ -1,5 +1,5 @@
 /**
- * Navigation — Обновлённая (без страницы структуры)
+ * Navigation — Обновлённая (с страницей структуры)
  */
 import React, { memo, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
@@ -7,13 +7,14 @@ import { haptic } from '../utils/haptic';
 import { 
   IconHome, IconUsers, IconCalendar, 
   IconUser, IconSparkles, IconSettings, IconSearch, IconPlus,
-  IconGraduationCap, IconChevronLeft, IconBook
+  IconGraduationCap, IconChevronLeft, IconBook, IconBuilding
 } from './Icons';
 
 // Навигация для админов (sidebar)
 const ADMIN_NAV = [
   { id: 'dashboard', label: 'Главная', icon: IconHome },
   { id: 'schedule', label: 'Расписание', icon: IconBook },
+  { id: 'faculties', label: 'Структура', icon: IconBuilding },
   { id: 'clubs', label: 'Клубы', icon: IconSparkles },
   { id: 'events', label: 'События', icon: IconCalendar },
   { id: 'users', label: 'Пользователи', icon: IconUsers },
@@ -31,7 +32,7 @@ const STUDENT_NAV = [
 const MOBILE_TABS_ADMIN = [
   { id: 'dashboard', label: 'Главная', icon: IconHome },
   { id: 'schedule', label: 'Расписание', icon: IconBook },
-  { id: 'clubs', label: 'Клубы', icon: IconSparkles },
+  { id: 'faculties', label: 'Структура', icon: IconBuilding },
   { id: 'users', label: 'Люди', icon: IconUsers },
   { id: 'profile', label: 'Профиль', icon: IconUser },
 ];
