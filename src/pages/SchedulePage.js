@@ -278,7 +278,7 @@ export const SchedulePage = memo(function SchedulePage() {
     haptic.light();
   }, []);
 
-  const saveLesson = useCallback(async () => {
+  const saveLesson = useCallback(async (andAddAnother = false) => {
     if (!lessonForm.subject.trim()) {
       notify.error('Введите название предмета');
       return;
@@ -316,9 +316,33 @@ export const SchedulePage = memo(function SchedulePage() {
       if (error) throw error;
 
       invalidateCache('schedule');
-      setShowLessonModal(false);
       loadSchedule(selectedGroup);
       haptic.success();
+      
+      if (andAddAnother && !editingLesson) {
+        // Очищаем форму для нового занятия, сохраняя день и время
+        const nextStartTime = lessonForm.end_time;
+        const endHour = parseInt(nextStartTime.split(':')[0]);
+        const endMinute = parseInt(nextStartTime.split(':')[1]);
+        const nextEndHour = endHour + 1;
+        const nextEndMinute = endMinute + 30;
+        const nextEndTime = `${String(nextEndHour + Math.floor(nextEndMinute / 60)).padStart(2, '0')}:${String(nextEndMinute % 60).padStart(2, '0')}`;
+        
+        setLessonForm({
+          subject: '',
+          teacher: lessonForm.teacher, // Сохраняем преподавателя
+          room: '',
+          day_of_week: lessonForm.day_of_week,
+          start_time: nextStartTime,
+          end_time: nextEndTime,
+          lesson_type: 'lecture',
+          week_type: 'all',
+          for_subgroup: false,
+          subgroup_id: ''
+        });
+      } else {
+        setShowLessonModal(false);
+      }
     } catch (error) {
       console.error('Error saving lesson:', error);
       notify.error('Ошибка: ' + (error.message || 'Неизвестная ошибка'));
@@ -692,8 +716,21 @@ export const SchedulePage = memo(function SchedulePage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setShowLessonModal(false)}>Отмена</Button>
-            <Button variant="primary" onClick={saveLesson} disabled={!lessonForm.subject.trim() || submitting}>
-              {submitting ? 'Сохранение...' : 'Сохранить'}
+            {!editingLesson && (
+              <Button 
+                variant="secondary" 
+                onClick={() => saveLesson(true)} 
+                disabled={!lessonForm.subject.trim() || submitting}
+              >
+                + Ещё
+              </Button>
+            )}
+            <Button 
+              variant="primary" 
+              onClick={() => saveLesson(false)} 
+              disabled={!lessonForm.subject.trim() || submitting}
+            >
+              {submitting ? 'Сохранение...' : (editingLesson ? 'Сохранить' : 'Готово')}
             </Button>
           </>
         }
