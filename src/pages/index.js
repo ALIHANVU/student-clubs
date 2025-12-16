@@ -1,10 +1,7 @@
+
 export { AdminDashboard, StudentDashboard } from './Dashboard';
-export { ClubsPage } from './ClubsPage';
-export { EventsPage } from './EventsPage';
-export { SchedulePage } from './SchedulePage';
-export { UsersPage } from './UsersPage';
-export { AdminDashboard, StudentDashboard } from './Dashboard';
-export { ClubsPage } from './ClubsPage';
-export { EventsPage } from './EventsPage';
-export { ProfilePage } from './ProfilePage';
-export { ProfilePage } from './ProfilePage';
+export { default as ClubsPage } from './ClubsPage';
+export { default as EventsPage } from './EventsPage';
+export { default as SchedulePage } from './SchedulePage';
+export { default as UsersPage } from './UsersPage';
+export { default as ProfilePage } from './ProfilePage';
