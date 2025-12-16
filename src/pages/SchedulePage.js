@@ -2,10 +2,9 @@
  * SchedulePage — ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ версия
  * 
  * ИСПРАВЛЕНО:
- * 1. Убрана бесконечная загрузка
- * 2. Селекторы доступны всем
- * 3. Создание групп работает
- * 4. Староста может редактировать свою группу
+ * 1. Создание структуры теперь сразу показывает новые элементы
+ * 2. После создания группы она автоматически выбирается
+ * 3. Данные обновляются мгновенно
  */
 import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import { supabase, invalidateCache } from '../utils/supabase';
@@ -381,7 +380,7 @@ export const SchedulePage = memo(function SchedulePage() {
     }
   }, [notificationForm, selectedGroup, user.id, notify]);
 
-  // ========== МОДАЛКА СТРУКТУРЫ ==========
+  // ========== МОДАЛКА СТРУКТУРЫ - ИСПРАВЛЕНО ==========
   const openStructureModal = useCallback((type) => {
     setStructureModalType(type);
     setStructureForm({ name: '', code: '' });
@@ -407,12 +406,10 @@ export const SchedulePage = memo(function SchedulePage() {
         
         if (result.error) throw result.error;
         
-        // Обновляем список и выбираем новый
-        const { data: newFaculties } = await supabase.from('faculties').select('*').order('name');
-        setFaculties(newFaculties || []);
+        // ПОЛНАЯ ПЕРЕЗАГРУЗКА структуры
+        await loadStructure();
+        // Автовыбор нового факультета
         setSelectedFaculty(result.data.id);
-        setSelectedDirection('');
-        setSelectedGroup('');
         
       } else if (structureModalType === 'direction') {
         if (!selectedFaculty) {
@@ -429,10 +426,10 @@ export const SchedulePage = memo(function SchedulePage() {
         
         if (result.error) throw result.error;
         
-        const { data: newDirections } = await supabase.from('directions').select('*').order('name');
-        setDirections(newDirections || []);
+        // ПОЛНАЯ ПЕРЕЗАГРУЗКА структуры
+        await loadStructure();
+        // Автовыбор нового направления
         setSelectedDirection(result.data.id);
-        setSelectedGroup('');
         
       } else if (structureModalType === 'group') {
         if (!selectedDirection) {
@@ -450,11 +447,9 @@ export const SchedulePage = memo(function SchedulePage() {
         
         if (result.error) throw result.error;
         
-        const { data: newGroups } = await supabase
-          .from('study_groups')
-          .select('*, leader:users!study_groups_leader_id_fkey(full_name)')
-          .order('name');
-        setGroups(newGroups || []);
+        // ПОЛНАЯ ПЕРЕЗАГРУЗКА структуры
+        await loadStructure();
+        // Автовыбор новой группы
         setSelectedGroup(result.data.id);
         
       } else if (structureModalType === 'subgroup') {
@@ -471,8 +466,8 @@ export const SchedulePage = memo(function SchedulePage() {
         
         if (result.error) throw result.error;
         
-        const { data: newSubgroups } = await supabase.from('subgroups').select('*').order('name');
-        setSubgroups(newSubgroups || []);
+        // ПОЛНАЯ ПЕРЕЗАГРУЗКА структуры
+        await loadStructure();
       }
       
       notify.success(`${names[structureModalType]} создан!`);
@@ -486,7 +481,7 @@ export const SchedulePage = memo(function SchedulePage() {
     } finally {
       setSubmitting(false);
     }
-  }, [structureForm, structureModalType, selectedFaculty, selectedDirection, selectedGroup, notify]);
+  }, [structureForm, structureModalType, selectedFaculty, selectedDirection, selectedGroup, notify, loadStructure]);
 
   // ========== РЕНДЕР ==========
   const dayTabs = useMemo(() => DAYS.map(d => ({ id: d.id, label: d.short })), []);
