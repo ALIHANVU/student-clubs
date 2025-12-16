@@ -86,7 +86,7 @@ export const SchedulePage = memo(function SchedulePage() {
       const [f, d, g, s] = await Promise.all([
         supabase.from('faculties').select('*').order('name'),
         supabase.from('directions').select('*').order('name'),
-        supabase.from('study_groups').select('*, leader:users!study_groups_leader_id_fkey(full_name)').order('name'),
+        supabase.from('study_groups').select('*').order('name'),
         supabase.from('subgroups').select('*').order('name')
       ]);
       
@@ -112,7 +112,7 @@ export const SchedulePage = memo(function SchedulePage() {
     } finally {
       setStructureLoading(false);
     }
-  }, [user.group_id, user.subgroup_id, notify]);
+  }, [notify]);
 
   // ========== ЗАГРУЗКА РАСПИСАНИЯ ==========
   const loadSchedule = useCallback(async (groupId) => {
@@ -258,15 +258,39 @@ export const SchedulePage = memo(function SchedulePage() {
     return filtered.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
   }, [schedule, activeDay, selectedSubgroup]);
 
-  // Текущая группа
+  // Текущая группа с информацией о старосте
+  const [groupLeaderName, setGroupLeaderName] = useState(null);
+  
   const currentGroup = useMemo(() => {
     if (!selectedGroup) return null;
     const group = groups.find(g => g.id === selectedGroup);
     if (!group) return null;
     const direction = directions.find(d => d.id === group.direction_id);
     const faculty = faculties.find(f => f.id === direction?.faculty_id);
-    return { ...group, direction, faculty };
-  }, [selectedGroup, groups, directions, faculties]);
+    return { ...group, direction, faculty, leaderName: groupLeaderName };
+  }, [selectedGroup, groups, directions, faculties, groupLeaderName]);
+  
+  // Загружаем информацию о старосте когда выбрана группа
+  useEffect(() => {
+    if (!selectedGroup) {
+      setGroupLeaderName(null);
+      return;
+    }
+    
+    const group = groups.find(g => g.id === selectedGroup);
+    if (group?.leader_id) {
+      supabase
+        .from('users')
+        .select('full_name')
+        .eq('id', group.leader_id)
+        .single()
+        .then(({ data }) => {
+          if (data) setGroupLeaderName(data.full_name);
+        });
+    } else {
+      setGroupLeaderName(null);
+    }
+  }, [selectedGroup, groups]);
 
   // ========== ОБРАБОТЧИКИ СЕЛЕКТОРОВ ==========
   const handleFacultyChange = (e) => {
@@ -698,7 +722,7 @@ export const SchedulePage = memo(function SchedulePage() {
                   <option value="">-- Выберите группу --</option>
                   {filteredGroups.map(g => (
                     <option key={g.id} value={g.id}>
-                      {g.name} ({g.course} курс){g.leader?.full_name ? ` — ${g.leader.full_name}` : ''}
+                      {g.name} ({g.course} курс)
                     </option>
                   ))}
                 </select>
@@ -729,8 +753,8 @@ export const SchedulePage = memo(function SchedulePage() {
             <div className="schedule-group-info">
               <div className="schedule-group-badge">
                 <span className="schedule-group-name">{currentGroup.name}</span>
-                {currentGroup.leader?.full_name && (
-                  <Badge variant="orange">Староста: {currentGroup.leader.full_name}</Badge>
+                {currentGroup.leaderName && (
+                  <Badge variant="orange">Староста: {currentGroup.leaderName}</Badge>
                 )}
                 {isGroupLeader && selectedGroup === user.group_id && (
                   <Badge variant="green">Вы староста</Badge>
