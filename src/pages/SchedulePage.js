@@ -1,6 +1,12 @@
 /**
- * SchedulePage — Исправленная версия
- * Фиксы: создание групп, отображение для студентов и старост
+ * SchedulePage — ИСПРАВЛЕННАЯ версия
+ * 
+ * ИСПРАВЛЕНО:
+ * 1. Селекторы теперь доступны всем ролям (админ, староста, студент)
+ * 2. Студенты и старосты с привязанной группой видят свою группу по умолчанию, но могут смотреть другие
+ * 3. Создание групп работает корректно
+ * 4. Староста может редактировать расписание своей группы
+ * 5. Админ может редактировать всё
  */
 import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import { supabase, invalidateCache } from '../utils/supabase';
@@ -64,13 +70,18 @@ export const SchedulePage = memo(function SchedulePage() {
   
   const [submitting, setSubmitting] = useState(false);
 
-  // Права доступа
+  // ========== ПРАВА ДОСТУПА ==========
   const isMainAdmin = user.role === 'main_admin';
   const isGroupLeader = user.role === 'group_leader';
   
   // Староста может редактировать только свою группу
+  // Админ может редактировать любую группу
   const canEditSchedule = isMainAdmin || (isGroupLeader && selectedGroup === user.group_id);
+  
+  // Уведомления может отправлять только староста своей группы
   const canSendNotifications = isGroupLeader && selectedGroup === user.group_id;
+  
+  // Структуру может редактировать только главный админ
   const canEditStructure = isMainAdmin;
 
   // ========== ЗАГРУЗКА ДАННЫХ ==========
@@ -140,8 +151,8 @@ export const SchedulePage = memo(function SchedulePage() {
             setSelectedSubgroup(user.subgroup_id);
           }
         }
-      } else if (data.faculties.length > 0 && isMainAdmin) {
-        // Для админа - выбираем первый факультет
+      } else if (data.faculties.length > 0) {
+        // Для всех пользователей без группы - выбираем первый факультет
         setSelectedFaculty(data.faculties[0].id);
       }
       
@@ -150,7 +161,7 @@ export const SchedulePage = memo(function SchedulePage() {
     };
     
     initData();
-  }, [user.group_id, user.subgroup_id, isMainAdmin, loadStructure]);
+  }, [user.group_id, user.subgroup_id, loadStructure]);
 
   // Загрузка расписания при выборе группы
   useEffect(() => {
@@ -160,30 +171,30 @@ export const SchedulePage = memo(function SchedulePage() {
     }
   }, [selectedGroup, dataLoaded, loadSchedule]);
 
-  // При выборе факультета - выбираем первое направление (только для админа)
+  // При выборе факультета - выбираем первое направление
   useEffect(() => {
-    if (selectedFaculty && dataLoaded && !user.group_id) {
+    if (selectedFaculty && dataLoaded) {
       const facultyDirections = directions.filter(d => d.faculty_id === selectedFaculty);
-      if (facultyDirections.length > 0) {
+      if (facultyDirections.length > 0 && !selectedDirection) {
         setSelectedDirection(facultyDirections[0].id);
-      } else {
+      } else if (facultyDirections.length === 0) {
         setSelectedDirection(null);
         setSelectedGroup(null);
       }
     }
-  }, [selectedFaculty, directions, dataLoaded, user.group_id]);
+  }, [selectedFaculty, directions, dataLoaded, selectedDirection]);
 
-  // При выборе направления - выбираем первую группу (только для админа)
+  // При выборе направления - выбираем первую группу
   useEffect(() => {
-    if (selectedDirection && dataLoaded && !user.group_id) {
+    if (selectedDirection && dataLoaded) {
       const directionGroups = groups.filter(g => g.direction_id === selectedDirection);
-      if (directionGroups.length > 0) {
+      if (directionGroups.length > 0 && !selectedGroup) {
         setSelectedGroup(directionGroups[0].id);
-      } else {
+      } else if (directionGroups.length === 0) {
         setSelectedGroup(null);
       }
     }
-  }, [selectedDirection, groups, dataLoaded, user.group_id]);
+  }, [selectedDirection, groups, dataLoaded, selectedGroup]);
 
   const handleRefresh = useCallback(async () => {
     setLoading(true);
@@ -396,54 +407,53 @@ export const SchedulePage = memo(function SchedulePage() {
     
     setSubmitting(true);
     try {
-      let error;
+      let result;
       
       if (structureModalType === 'faculty') {
-        const { error: e } = await supabase.from('faculties').insert({
+        result = await supabase.from('faculties').insert({
           name: structureForm.name.trim(),
           code: structureForm.code.trim() || null,
           description: null
-        });
-        error = e;
+        }).select().single();
+        
       } else if (structureModalType === 'direction') {
         if (!structureForm.parent_id) {
           notify.error('Не выбран факультет');
           setSubmitting(false);
           return;
         }
-        const { error: e } = await supabase.from('directions').insert({
+        result = await supabase.from('directions').insert({
           name: structureForm.name.trim(),
           code: structureForm.code.trim() || null,
           faculty_id: structureForm.parent_id
-        });
-        error = e;
+        }).select().single();
+        
       } else if (structureModalType === 'group') {
         if (!structureForm.parent_id) {
           notify.error('Не выбрано направление');
           setSubmitting(false);
           return;
         }
-        const { error: e } = await supabase.from('study_groups').insert({
+        result = await supabase.from('study_groups').insert({
           name: structureForm.name.trim(),
           direction_id: structureForm.parent_id,
           course: 1,
           year: new Date().getFullYear()
-        });
-        error = e;
+        }).select().single();
+        
       } else if (structureModalType === 'subgroup') {
         if (!structureForm.parent_id) {
           notify.error('Не выбрана группа');
           setSubmitting(false);
           return;
         }
-        const { error: e } = await supabase.from('subgroups').insert({
+        result = await supabase.from('subgroups').insert({
           name: structureForm.name.trim(),
           group_id: structureForm.parent_id
-        });
-        error = e;
+        }).select().single();
       }
       
-      if (error) throw error;
+      if (result?.error) throw result.error;
       
       const names = { faculty: 'Факультет', direction: 'Направление', group: 'Группа', subgroup: 'Подгруппа' };
       notify.success(`${names[structureModalType]} создан`);
@@ -453,15 +463,17 @@ export const SchedulePage = memo(function SchedulePage() {
       const newData = await loadStructure();
       
       // Автоматически выбираем созданный элемент
-      if (structureModalType === 'faculty' && newData.faculties.length > 0) {
-        const newFaculty = newData.faculties.find(f => f.name === structureForm.name.trim());
-        if (newFaculty) setSelectedFaculty(newFaculty.id);
-      } else if (structureModalType === 'direction' && newData.directions.length > 0) {
-        const newDir = newData.directions.find(d => d.name === structureForm.name.trim());
-        if (newDir) setSelectedDirection(newDir.id);
-      } else if (structureModalType === 'group' && newData.groups.length > 0) {
-        const newGroup = newData.groups.find(g => g.name === structureForm.name.trim());
-        if (newGroup) setSelectedGroup(newGroup.id);
+      if (result?.data) {
+        if (structureModalType === 'faculty') {
+          setSelectedFaculty(result.data.id);
+          setSelectedDirection(null);
+          setSelectedGroup(null);
+        } else if (structureModalType === 'direction') {
+          setSelectedDirection(result.data.id);
+          setSelectedGroup(null);
+        } else if (structureModalType === 'group') {
+          setSelectedGroup(result.data.id);
+        }
       }
       
       haptic.success();
@@ -489,8 +501,38 @@ export const SchedulePage = memo(function SchedulePage() {
     return names[structureModalType];
   }, [structureModalType]);
 
-  // Определяем, заблокированы ли селекторы (для студентов и старост с группой)
-  const selectorsDisabled = !!user.group_id;
+  // Обработчики изменения селекторов
+  const handleFacultyChange = useCallback((e) => {
+    const value = e.target.value || null;
+    setSelectedFaculty(value);
+    setSelectedDirection(null);
+    setSelectedGroup(null);
+    setSelectedSubgroup(null);
+    haptic.light();
+  }, []);
+
+  const handleDirectionChange = useCallback((e) => {
+    const value = e.target.value || null;
+    setSelectedDirection(value);
+    setSelectedGroup(null);
+    setSelectedSubgroup(null);
+    haptic.light();
+  }, []);
+
+  const handleGroupChange = useCallback((e) => {
+    const value = e.target.value || null;
+    setSelectedGroup(value);
+    setSelectedSubgroup(null);
+    if (value) {
+      setLoading(true);
+    }
+    haptic.light();
+  }, []);
+
+  const handleSubgroupChange = useCallback((e) => {
+    setSelectedSubgroup(e.target.value || null);
+    haptic.light();
+  }, []);
 
   return (
     <>
@@ -523,22 +565,14 @@ export const SchedulePage = memo(function SchedulePage() {
       <PullToRefresh onRefresh={handleRefresh}>
         <div className="page-content">
           
-          {/* Селекторы структуры */}
+          {/* Селекторы структуры - ДОСТУПНЫ ВСЕМ */}
           <div className="schedule-selectors">
             {/* Факультет */}
             <div className="selector-row">
               <select 
                 className="form-select" 
                 value={selectedFaculty || ''} 
-                onChange={(e) => { 
-                  setSelectedFaculty(e.target.value || null); 
-                  if (!e.target.value) {
-                    setSelectedDirection(null);
-                    setSelectedGroup(null);
-                  }
-                  haptic.light(); 
-                }}
-                disabled={selectorsDisabled}
+                onChange={handleFacultyChange}
               >
                 <option value="">Выберите факультет</option>
                 {faculties.map(f => (
@@ -556,14 +590,7 @@ export const SchedulePage = memo(function SchedulePage() {
                 <select 
                   className="form-select" 
                   value={selectedDirection || ''} 
-                  onChange={(e) => { 
-                    setSelectedDirection(e.target.value || null);
-                    if (!e.target.value) {
-                      setSelectedGroup(null);
-                    }
-                    haptic.light(); 
-                  }}
-                  disabled={selectorsDisabled}
+                  onChange={handleDirectionChange}
                 >
                   <option value="">Выберите направление</option>
                   {filteredDirections.map(d => (
@@ -582,15 +609,7 @@ export const SchedulePage = memo(function SchedulePage() {
                 <select 
                   className="form-select" 
                   value={selectedGroup || ''} 
-                  onChange={(e) => { 
-                    setSelectedGroup(e.target.value || null);
-                    setSelectedSubgroup(null);
-                    if (e.target.value) {
-                      setLoading(true);
-                    }
-                    haptic.light(); 
-                  }}
-                  disabled={selectorsDisabled}
+                  onChange={handleGroupChange}
                 >
                   <option value="">Выберите группу</option>
                   {filteredGroups.map(g => (
@@ -611,10 +630,7 @@ export const SchedulePage = memo(function SchedulePage() {
                 <select 
                   className="form-select" 
                   value={selectedSubgroup || ''} 
-                  onChange={(e) => { 
-                    setSelectedSubgroup(e.target.value || null);
-                    haptic.light(); 
-                  }}
+                  onChange={handleSubgroupChange}
                 >
                   <option value="">Вся группа</option>
                   {filteredSubgroups.map(s => (
@@ -639,6 +655,9 @@ export const SchedulePage = memo(function SchedulePage() {
                 {isGroupLeader && selectedGroup === user.group_id && (
                   <Badge variant="green">Вы староста</Badge>
                 )}
+                {user.group_id === selectedGroup && !isGroupLeader && (
+                  <Badge variant="blue">Моя группа</Badge>
+                )}
               </div>
               <div className="schedule-group-path">
                 🏛️ {currentGroup.faculty?.name} → 📚 {currentGroup.direction?.name}
@@ -661,8 +680,8 @@ export const SchedulePage = memo(function SchedulePage() {
           {!selectedGroup ? (
             <EmptyState 
               icon="📚" 
-              title={user.group_id ? "Загрузка..." : "Выберите группу"} 
-              text={user.group_id ? "Подождите, загружаем расписание" : "Выберите факультет, направление и группу для просмотра расписания"} 
+              title="Выберите группу" 
+              text="Выберите факультет, направление и группу для просмотра расписания" 
             />
           ) : loading ? (
             <SkeletonList count={4} />
