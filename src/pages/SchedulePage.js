@@ -1,127 +1,213 @@
 /**
- * FacultiesPage — ПОЛНОСТЬЮ ОБНОВЛЁННАЯ
+ * SchedulePage — Страница расписания
  * 
- * ✅ Редактирование факультетов и направлений
- * ✅ Удаление всех элементов (факультеты, направления, группы, подгруппы)
+ * ✅ Просмотр расписания по группам
+ * ✅ Редактирование для старост и админов
+ * ✅ Фильтрация по дням недели
  * ✅ iOS 26 Liquid Glass дизайн
- * ✅ Оптимизация и мемоизация
- * ✅ Красивые анимации
  */
 import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import { supabase, invalidateCache } from '../utils/supabase';
 import { haptic } from '../utils/haptic';
+import { getLessonTypeName, getWeekTypeName } from '../utils/helpers';
+import { DAYS, TIME_SLOTS, LESSON_TYPES, WEEK_TYPES } from '../utils/constants';
 import { useNotification } from '../context/NotificationContext';
 import { useApp } from '../context/AppContext';
 import { 
-  PageHeader, EmptyState, Button, FormField, Input, Textarea, 
-  PullToRefresh, SkeletonList 
+  PageHeader, EmptyState, FilterTabs, Button, FormField, Input, 
+  PullToRefresh, SkeletonList, Badge
 } from '../components/UI';
 import { Modal, ConfirmModal } from '../components/Modal';
 import { MobilePageHeader } from '../components/Navigation';
-import { 
-  IconBuilding, IconBook, IconUsers, IconUser, 
-  IconEdit, IconTrash, IconPlus, IconChevronDown, IconChevronRight 
-} from '../components/Icons';
+import { IconEdit, IconTrash, IconPlus } from '../components/Icons';
 
-export const FacultiesPage = memo(function FacultiesPage() {
+export const SchedulePage = memo(function SchedulePage() {
   const { user } = useApp();
   const { notify } = useNotification();
   
   // Данные
-  const [faculties, setFaculties] = useState([]);
-  const [directions, setDirections] = useState([]);
+  const [schedules, setSchedules] = useState([]);
   const [groups, setGroups] = useState([]);
   const [subgroups, setSubgroups] = useState([]);
+  const [directions, setDirections] = useState([]);
+  const [faculties, setFaculties] = useState([]);
   
   // UI состояния
   const [loading, setLoading] = useState(true);
-  const [expandedFaculty, setExpandedFaculty] = useState(null);
-  const [expandedDirection, setExpandedDirection] = useState(null);
-  const [expandedGroup, setExpandedGroup] = useState(null);
-  const [search, setSearch] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState(user.group_id || '');
+  const [selectedSubgroupId, setSelectedSubgroupId] = useState(user.subgroup_id || '');
+  const [selectedDay, setSelectedDay] = useState(new Date().getDay() || 1);
   
   // Модалки
   const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState('faculty'); // faculty, direction, group, subgroup
   const [editing, setEditing] = useState(null);
-  const [parentId, setParentId] = useState(null);
-  const [parentName, setParentName] = useState('');
-  
-  // Форма
-  const [form, setForm] = useState({ 
-    name: '', 
-    code: '', 
-    description: '', 
-    course: 1,
-    year: new Date().getFullYear()
+  const [form, setForm] = useState({
+    subject: '',
+    teacher: '',
+    room: '',
+    start_time: '08:30',
+    end_time: '10:00',
+    lesson_type: 'lecture',
+    week_type: 'all',
+    subgroup_id: '',
+    notes: ''
   });
-  
   const [submitting, setSubmitting] = useState(false);
-  
-  // Модалка подтверждения удаления
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   // Права доступа
-  const canEdit = user.role === 'main_admin';
+  const isAdmin = user.role === 'main_admin';
+  const isGroupLeader = user.role === 'group_leader';
+  
+  // Староста может редактировать только расписание своей группы
+  const canEdit = isAdmin || (isGroupLeader && selectedGroupId === user.group_id);
 
   // ========== ЗАГРУЗКА ДАННЫХ ==========
   const loadData = useCallback(async () => {
     try {
-      const [f, d, g, s] = await Promise.all([
-        supabase.from('faculties').select('*').order('name'),
+      const [groupsRes, subgroupsRes, directionsRes, facultiesRes] = await Promise.all([
+        supabase.from('study_groups').select('*').order('name'),
+        supabase.from('subgroups').select('*').order('name'),
         supabase.from('directions').select('*').order('name'),
-        supabase.from('study_groups').select('*, directions(name)').order('name'),
-        supabase.from('subgroups').select('*').order('name')
+        supabase.from('faculties').select('*').order('name')
       ]);
       
-      setFaculties(f.data || []);
-      setDirections(d.data || []);
-      setGroups(g.data || []);
-      setSubgroups(s.data || []);
+      setGroups(groupsRes.data || []);
+      setSubgroups(subgroupsRes.data || []);
+      setDirections(directionsRes.data || []);
+      setFaculties(facultiesRes.data || []);
+      
+      // Устанавливаем группу пользователя по умолчанию
+      if (!selectedGroupId && user.group_id) {
+        setSelectedGroupId(user.group_id);
+      }
     } catch (error) {
       console.error('Error loading data:', error);
       notify.error('Ошибка загрузки данных');
     } finally {
       setLoading(false);
     }
-  }, [notify]);
+  }, [user.group_id, selectedGroupId, notify]);
 
-  useEffect(() => { loadData(); }, [loadData]);
-
-  const handleRefresh = useCallback(async () => { 
-    setLoading(true);
-    await loadData(); 
-    notify.success('Обновлено'); 
-  }, [loadData, notify]);
-
-  // ========== ОТКРЫТИЕ МОДАЛОК ==========
-  const openModal = useCallback((type, parent = null, parentNameStr = '', item = null) => {
-    setModalType(type);
-    setParentId(parent);
-    setParentName(parentNameStr);
-    setEditing(item);
-    
-    if (item) {
-      // Редактирование
-      setForm({
-        name: item.name || '',
-        code: item.code || '',
-        description: item.description || '',
-        course: item.course || 1,
-        year: item.year || new Date().getFullYear()
-      });
-    } else {
-      // Создание
-      setForm({ 
-        name: '', 
-        code: '', 
-        description: '', 
-        course: 1,
-        year: new Date().getFullYear()
-      });
+  // Загрузка расписания для выбранной группы
+  const loadSchedule = useCallback(async () => {
+    if (!selectedGroupId) {
+      setSchedules([]);
+      return;
     }
     
+    try {
+      const { data, error } = await supabase
+        .from('schedules')
+        .select('*, subgroups(name)')
+        .eq('group_id', selectedGroupId)
+        .order('start_time');
+      
+      if (error) throw error;
+      setSchedules(data || []);
+    } catch (error) {
+      console.error('Error loading schedule:', error);
+      notify.error('Ошибка загрузки расписания');
+    }
+  }, [selectedGroupId, notify]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadSchedule(); }, [loadSchedule]);
+
+  const handleRefresh = useCallback(async () => {
+    setLoading(true);
+    await loadData();
+    await loadSchedule();
+    notify.success('Обновлено');
+  }, [loadData, loadSchedule, notify]);
+
+  // ========== ФИЛЬТРАЦИЯ ==========
+  
+  // Подгруппы для выбранной группы
+  const filteredSubgroups = useMemo(() => 
+    subgroups.filter(s => s.group_id === selectedGroupId),
+    [subgroups, selectedGroupId]
+  );
+
+  // Расписание на выбранный день
+  const daySchedule = useMemo(() => {
+    let filtered = schedules.filter(s => s.day_of_week === selectedDay);
+    
+    // Фильтруем по подгруппе если выбрана
+    if (selectedSubgroupId) {
+      filtered = filtered.filter(s => 
+        s.subgroup_id === null || s.subgroup_id === selectedSubgroupId
+      );
+    }
+    
+    // Сортируем по времени
+    return filtered.sort((a, b) => {
+      const timeA = a.start_time || '00:00';
+      const timeB = b.start_time || '00:00';
+      return timeA.localeCompare(timeB);
+    });
+  }, [schedules, selectedDay, selectedSubgroupId]);
+
+  // Группируем группы по факультетам для селекта
+  const groupedGroups = useMemo(() => {
+    const grouped = {};
+    groups.forEach(g => {
+      const direction = directions.find(d => d.id === g.direction_id);
+      const faculty = faculties.find(f => f.id === direction?.faculty_id);
+      const key = faculty?.name || 'Без факультета';
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push({ ...g, direction });
+    });
+    return grouped;
+  }, [groups, directions, faculties]);
+
+  // Информация о выбранной группе
+  const selectedGroupInfo = useMemo(() => {
+    const group = groups.find(g => g.id === selectedGroupId);
+    if (!group) return null;
+    
+    const direction = directions.find(d => d.id === group.direction_id);
+    const faculty = faculties.find(f => f.id === direction?.faculty_id);
+    
+    return {
+      ...group,
+      directionName: direction?.name,
+      facultyName: faculty?.name
+    };
+  }, [selectedGroupId, groups, directions, faculties]);
+
+  // ========== МОДАЛКИ ==========
+  const openAddModal = useCallback(() => {
+    setEditing(null);
+    setForm({
+      subject: '',
+      teacher: '',
+      room: '',
+      start_time: '08:30',
+      end_time: '10:00',
+      lesson_type: 'lecture',
+      week_type: 'all',
+      subgroup_id: '',
+      notes: ''
+    });
+    setShowModal(true);
+    haptic.light();
+  }, []);
+
+  const openEditModal = useCallback((lesson) => {
+    setEditing(lesson);
+    setForm({
+      subject: lesson.subject || '',
+      teacher: lesson.teacher || '',
+      room: lesson.room || '',
+      start_time: lesson.start_time?.slice(0, 5) || '08:30',
+      end_time: lesson.end_time?.slice(0, 5) || '10:00',
+      lesson_type: lesson.lesson_type || 'lecture',
+      week_type: lesson.week_type || 'all',
+      subgroup_id: lesson.subgroup_id || '',
+      notes: lesson.notes || ''
+    });
     setShowModal(true);
     haptic.light();
   }, []);
@@ -129,133 +215,72 @@ export const FacultiesPage = memo(function FacultiesPage() {
   const closeModal = useCallback(() => {
     setShowModal(false);
     setEditing(null);
-    setParentId(null);
-    setParentName('');
   }, []);
 
   // ========== СОХРАНЕНИЕ ==========
-  const saveItem = useCallback(async () => {
-    if (!form.name.trim()) {
-      notify.error('Введите название');
+  const saveLesson = useCallback(async () => {
+    if (!form.subject.trim()) {
+      notify.error('Введите название предмета');
+      return;
+    }
+    
+    if (!selectedGroupId) {
+      notify.error('Выберите группу');
       return;
     }
     
     setSubmitting(true);
     
     try {
-      let result;
-      const names = { 
-        faculty: 'Факультет', 
-        direction: 'Направление', 
-        group: 'Группа', 
-        subgroup: 'Подгруппа' 
+      const lessonData = {
+        group_id: selectedGroupId,
+        day_of_week: selectedDay,
+        subject: form.subject.trim(),
+        teacher: form.teacher.trim() || null,
+        room: form.room.trim() || null,
+        start_time: form.start_time,
+        end_time: form.end_time,
+        lesson_type: form.lesson_type,
+        week_type: form.week_type,
+        subgroup_id: form.subgroup_id || null,
+        notes: form.notes.trim() || null,
+        created_by: user.id
       };
       
-      if (modalType === 'faculty') {
-        const data = { 
-          name: form.name.trim(), 
-          code: form.code.trim() || null, 
-          description: form.description.trim() || null 
-        };
+      if (editing) {
+        const { error } = await supabase
+          .from('schedules')
+          .update(lessonData)
+          .eq('id', editing.id);
         
-        if (editing) {
-          result = await supabase.from('faculties').update(data).eq('id', editing.id);
-          if (result.error) throw result.error;
-          notify.success('Факультет обновлён');
-        } else {
-          result = await supabase.from('faculties').insert(data);
-          if (result.error) throw result.error;
-          notify.success('Факультет создан');
-        }
+        if (error) throw error;
+        notify.success('Занятие обновлено');
+      } else {
+        const { error } = await supabase
+          .from('schedules')
+          .insert(lessonData);
         
-      } else if (modalType === 'direction') {
-        if (!parentId) {
-          notify.error('Не выбран факультет');
-          setSubmitting(false);
-          return;
-        }
-        
-        const data = { 
-          name: form.name.trim(), 
-          code: form.code.trim() || null, 
-          faculty_id: parentId 
-        };
-        
-        if (editing) {
-          result = await supabase.from('directions').update(data).eq('id', editing.id);
-          if (result.error) throw result.error;
-          notify.success('Направление обновлено');
-        } else {
-          result = await supabase.from('directions').insert(data);
-          if (result.error) throw result.error;
-          notify.success('Направление создано');
-        }
-        
-      } else if (modalType === 'group') {
-        if (!parentId) {
-          notify.error('Не выбрано направление');
-          setSubmitting(false);
-          return;
-        }
-        
-        const data = { 
-          name: form.name.trim(), 
-          course: parseInt(form.course) || 1, 
-          year: parseInt(form.year) || new Date().getFullYear(),
-          direction_id: parentId
-        };
-        
-        if (editing) {
-          result = await supabase.from('study_groups').update(data).eq('id', editing.id);
-          if (result.error) throw result.error;
-          notify.success('Группа обновлена');
-        } else {
-          result = await supabase.from('study_groups').insert(data);
-          if (result.error) throw result.error;
-          notify.success('Группа создана');
-        }
-        
-      } else if (modalType === 'subgroup') {
-        if (!parentId) {
-          notify.error('Не выбрана группа');
-          setSubmitting(false);
-          return;
-        }
-        
-        const data = { 
-          name: form.name.trim(), 
-          group_id: parentId 
-        };
-        
-        if (editing) {
-          result = await supabase.from('subgroups').update(data).eq('id', editing.id);
-          if (result.error) throw result.error;
-          notify.success('Подгруппа обновлена');
-        } else {
-          result = await supabase.from('subgroups').insert(data);
-          if (result.error) throw result.error;
-          notify.success('Подгруппа создана');
-        }
+        if (error) throw error;
+        notify.success('Занятие добавлено');
       }
       
-      invalidateCache('structure');
+      invalidateCache('schedules');
       closeModal();
-      loadData();
+      loadSchedule();
       haptic.success();
-      
     } catch (error) {
-      console.error('Error saving:', error);
-      notify.error('Ошибка: ' + (error.message || 'Неизвестная ошибка'));
+      console.error('Error saving lesson:', error);
+      notify.error('Ошибка сохранения: ' + (error.message || ''));
       haptic.error();
     } finally {
       setSubmitting(false);
     }
-  }, [form, modalType, parentId, editing, loadData, notify, closeModal]);
+  }, [form, selectedGroupId, selectedDay, editing, user.id, loadSchedule, notify, closeModal]);
 
   // ========== УДАЛЕНИЕ ==========
-  const requestDelete = useCallback((type, id, name, e) => {
+  const requestDelete = useCallback((lesson, e) => {
     e?.stopPropagation();
-    setDeleteTarget({ type, id, name });
+    setDeleteTarget(lesson);
     setShowConfirmDelete(true);
     haptic.light();
   }, []);
@@ -263,235 +288,317 @@ export const FacultiesPage = memo(function FacultiesPage() {
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
     
-    const { type, id, name } = deleteTarget;
-    
     try {
-      let error;
-      
-      if (type === 'faculty') {
-        ({ error } = await supabase.from('faculties').delete().eq('id', id));
-      } else if (type === 'direction') {
-        ({ error } = await supabase.from('directions').delete().eq('id', id));
-      } else if (type === 'group') {
-        ({ error } = await supabase.from('study_groups').delete().eq('id', id));
-      } else if (type === 'subgroup') {
-        ({ error } = await supabase.from('subgroups').delete().eq('id', id));
-      }
+      const { error } = await supabase
+        .from('schedules')
+        .delete()
+        .eq('id', deleteTarget.id);
       
       if (error) throw error;
       
-      const messages = { 
-        faculty: 'Факультет', 
-        direction: 'Направление', 
-        group: 'Группа',
-        subgroup: 'Подгруппа'
-      };
-      
-      invalidateCache('structure');
-      loadData();
-      notify.success(`${messages[type]} удалён`);
+      invalidateCache('schedules');
+      loadSchedule();
+      notify.success('Занятие удалено');
       haptic.medium();
-      
     } catch (error) {
-      console.error('Error deleting:', error);
-      notify.error('Ошибка удаления: ' + (error.message || ''));
+      console.error('Error deleting lesson:', error);
+      notify.error('Ошибка удаления');
       haptic.error();
     } finally {
       setShowConfirmDelete(false);
       setDeleteTarget(null);
     }
-  }, [deleteTarget, loadData, notify]);
+  }, [deleteTarget, loadSchedule, notify]);
 
-  // ========== ФИЛЬТРАЦИЯ ==========
-  const filteredFaculties = useMemo(() => 
-    faculties.filter(f => 
-      f.name.toLowerCase().includes(search.toLowerCase()) || 
-      (f.code && f.code.toLowerCase().includes(search.toLowerCase()))
-    ),
-    [faculties, search]
+  // ========== ДЕНЬ НЕДЕЛИ ==========
+  const dayTabs = useMemo(() => 
+    DAYS.map(d => ({ id: d.id, label: d.short })),
+    []
   );
 
-  // ========== ГРУППИРОВКА ДАННЫХ ==========
-  const facultyTree = useMemo(() => {
-    return filteredFaculties.map(faculty => {
-      const facultyDirections = directions.filter(d => d.faculty_id === faculty.id);
-      
-      const directionsWithGroups = facultyDirections.map(direction => {
-        const directionGroups = groups.filter(g => g.direction_id === direction.id);
-        
-        const groupsWithSubgroups = directionGroups.map(group => {
-          const groupSubgroups = subgroups.filter(s => s.group_id === group.id);
-          return { ...group, subgroups: groupSubgroups };
-        });
-        
-        return { ...direction, groups: groupsWithSubgroups };
-      });
-      
-      return { ...faculty, directions: directionsWithGroups };
-    });
-  }, [filteredFaculties, directions, groups, subgroups]);
-
-  // ========== ЗАГОЛОВОК МОДАЛКИ ==========
-  const getModalTitle = () => {
-    const action = editing ? 'Редактировать' : 'Создать';
-    const types = { 
-      faculty: 'факультет', 
-      direction: 'направление', 
-      group: 'группу',
-      subgroup: 'подгруппу'
-    };
-    let title = `${action} ${types[modalType]}`;
-    if (parentName && !editing) {
-      title += ` • ${parentName}`;
-    }
-    return title;
-  };
+  const currentDayName = useMemo(() => 
+    DAYS.find(d => d.id === selectedDay)?.name || '',
+    [selectedDay]
+  );
 
   // ========== РЕНДЕР ==========
   return (
     <>
       <PageHeader 
-        title="🏛️ Структура университета" 
-        action={canEdit && <Button variant="primary" onClick={() => openModal('faculty')}>+ Факультет</Button>} 
-        search={search} 
-        onSearch={setSearch} 
+        title="📚 Расписание" 
+        action={canEdit && selectedGroupId && (
+          <Button variant="primary" onClick={openAddModal}>
+            <IconPlus size={20} />
+            Добавить
+          </Button>
+        )}
       />
       <MobilePageHeader 
-        title="Структура" 
-        showSearch 
-        searchValue={search} 
-        onSearchChange={setSearch} 
-        actions={canEdit ? [{ icon: 'plus', onClick: () => openModal('faculty'), primary: true }] : []} 
+        title="Расписание" 
+        subtitle={selectedGroupInfo?.name}
+        actions={canEdit && selectedGroupId ? [{ icon: 'plus', onClick: openAddModal, primary: true }] : []}
       />
 
       <PullToRefresh onRefresh={handleRefresh}>
         <div className="page-content">
+          {/* Селекторы группы и подгруппы */}
+          <div className="schedule-selectors">
+            <div className="selector-row">
+              <select 
+                className="form-select" 
+                value={selectedGroupId} 
+                onChange={(e) => {
+                  setSelectedGroupId(e.target.value);
+                  setSelectedSubgroupId('');
+                }}
+              >
+                <option value="">Выберите группу</option>
+                {Object.entries(groupedGroups).map(([facultyName, groupList]) => (
+                  <optgroup key={facultyName} label={facultyName}>
+                    {groupList.map(g => (
+                      <option key={g.id} value={g.id}>
+                        {g.name} ({g.course} курс)
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+            
+            {filteredSubgroups.length > 0 && (
+              <div className="selector-row">
+                <select 
+                  className="form-select" 
+                  value={selectedSubgroupId} 
+                  onChange={(e) => setSelectedSubgroupId(e.target.value)}
+                >
+                  <option value="">Все подгруппы</option>
+                  {filteredSubgroups.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* Информация о группе */}
+          {selectedGroupInfo && (
+            <div className="schedule-group-info">
+              <div className="schedule-group-badge">
+                <span className="schedule-group-name">{selectedGroupInfo.name}</span>
+                <Badge variant="blue">{selectedGroupInfo.course} курс</Badge>
+              </div>
+              <div className="schedule-group-path">
+                {selectedGroupInfo.facultyName} → {selectedGroupInfo.directionName}
+              </div>
+            </div>
+          )}
+
+          {/* Табы дней недели */}
+          <FilterTabs 
+            tabs={dayTabs} 
+            activeTab={selectedDay} 
+            onChange={(day) => {
+              haptic.light();
+              setSelectedDay(day);
+            }} 
+          />
+
+          {/* Заголовок дня */}
+          <div className="schedule-day-title">{currentDayName}</div>
+
+          {/* Список занятий */}
           {loading ? (
             <SkeletonList count={5} />
-          ) : facultyTree.length === 0 ? (
+          ) : !selectedGroupId ? (
             <EmptyState 
-              icon={<IconBuilding size={64} color="var(--text-tertiary)" />}
-              title="Нет факультетов" 
-              text={search ? 'Ничего не найдено' : 'Создайте первый факультет'} 
-              action={canEdit && !search && (
-                <Button variant="primary" onClick={() => openModal('faculty')}>
+              icon="📚" 
+              title="Выберите группу" 
+              text="Выберите учебную группу, чтобы посмотреть расписание"
+            />
+          ) : daySchedule.length === 0 ? (
+            <EmptyState 
+              icon="🎉" 
+              title="Нет занятий" 
+              text={`В ${currentDayName.toLowerCase()} нет занятий`}
+              action={canEdit && (
+                <Button variant="primary" onClick={openAddModal}>
                   <IconPlus size={20} />
-                  Создать факультет
+                  Добавить занятие
                 </Button>
-              )} 
+              )}
             />
           ) : (
-            <div className="structure-tree">
-              {facultyTree.map((faculty) => (
-                <FacultyItem 
-                  key={faculty.id}
-                  faculty={faculty}
-                  canEdit={canEdit}
-                  expandedFaculty={expandedFaculty}
-                  expandedDirection={expandedDirection}
-                  expandedGroup={expandedGroup}
-                  onToggleFaculty={(id) => {
-                    haptic.light();
-                    setExpandedFaculty(expandedFaculty === id ? null : id);
-                    setExpandedDirection(null);
-                    setExpandedGroup(null);
-                  }}
-                  onToggleDirection={(id) => {
-                    haptic.light();
-                    setExpandedDirection(expandedDirection === id ? null : id);
-                    setExpandedGroup(null);
-                  }}
-                  onToggleGroup={(id) => {
-                    haptic.light();
-                    setExpandedGroup(expandedGroup === id ? null : id);
-                  }}
-                  onEdit={openModal}
-                  onDelete={requestDelete}
-                />
+            <div className="schedule-list">
+              {daySchedule.map((lesson) => (
+                <div 
+                  key={lesson.id} 
+                  className="schedule-item"
+                  onClick={canEdit ? () => openEditModal(lesson) : undefined}
+                >
+                  <div className="schedule-time">
+                    <span className="schedule-time-start">
+                      {lesson.start_time?.slice(0, 5)}
+                    </span>
+                    <span className="schedule-time-end">
+                      {lesson.end_time?.slice(0, 5)}
+                    </span>
+                  </div>
+                  
+                  <div className="schedule-content">
+                    <div className="schedule-subject">{lesson.subject}</div>
+                    <div className="schedule-details">
+                      {lesson.teacher && <span>👤 {lesson.teacher}</span>}
+                      {lesson.room && <span>🚪 {lesson.room}</span>}
+                      <span className="schedule-type-badge">
+                        {getLessonTypeName(lesson.lesson_type)}
+                      </span>
+                      {lesson.week_type !== 'all' && (
+                        <span className="schedule-type-badge">
+                          {getWeekTypeName(lesson.week_type)}
+                        </span>
+                      )}
+                      {lesson.subgroups?.name && (
+                        <span className="schedule-type-badge">
+                          {lesson.subgroups.name}
+                        </span>
+                      )}
+                    </div>
+                    {lesson.notes && (
+                      <div className="schedule-notes">📝 {lesson.notes}</div>
+                    )}
+                  </div>
+                  
+                  {canEdit && (
+                    <button 
+                      className="schedule-delete"
+                      onClick={(e) => requestDelete(lesson, e)}
+                    >
+                      <IconTrash size={18} />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           )}
         </div>
       </PullToRefresh>
 
-      {/* Модалка создания/редактирования */}
+      {/* Модалка добавления/редактирования */}
       <Modal 
         isOpen={showModal} 
         onClose={closeModal} 
-        title={getModalTitle()} 
+        title={editing ? 'Редактировать занятие' : 'Добавить занятие'} 
         footer={
           <>
             <Button variant="secondary" onClick={closeModal}>Отмена</Button>
             <Button 
               variant="primary" 
-              onClick={saveItem} 
-              disabled={!form.name.trim() || submitting}
+              onClick={saveLesson} 
+              disabled={!form.subject.trim() || submitting}
             >
-              {submitting ? 'Сохранение...' : (editing ? 'Сохранить' : 'Создать')}
+              {submitting ? 'Сохранение...' : (editing ? 'Сохранить' : 'Добавить')}
             </Button>
           </>
         }
       >
-        <FormField label="Название *">
+        <FormField label="Предмет *">
           <Input 
-            value={form.name} 
-            onChange={(e) => setForm(prev => ({ ...prev, name: e.target.value }))} 
-            placeholder={
-              modalType === 'faculty' ? 'Факультет информатики' : 
-              modalType === 'direction' ? 'Программная инженерия' : 
-              modalType === 'group' ? 'ПИ-21' : '1 подгруппа'
-            }
+            value={form.subject} 
+            onChange={(e) => setForm(prev => ({ ...prev, subject: e.target.value }))} 
+            placeholder="Математический анализ"
             autoFocus 
           />
         </FormField>
         
-        {(modalType === 'faculty' || modalType === 'direction') && (
-          <FormField label="Код (сокращение)">
-            <Input 
-              value={form.code} 
-              onChange={(e) => setForm(prev => ({ ...prev, code: e.target.value }))} 
-              placeholder={modalType === 'faculty' ? 'ФИТ' : '09.03.04'} 
-            />
+        <FormField label="Преподаватель">
+          <Input 
+            value={form.teacher} 
+            onChange={(e) => setForm(prev => ({ ...prev, teacher: e.target.value }))} 
+            placeholder="Иванов И.И."
+          />
+        </FormField>
+        
+        <FormField label="Аудитория">
+          <Input 
+            value={form.room} 
+            onChange={(e) => setForm(prev => ({ ...prev, room: e.target.value }))} 
+            placeholder="301"
+          />
+        </FormField>
+        
+        <div className="form-row">
+          <FormField label="Начало">
+            <select 
+              className="form-select" 
+              value={form.start_time} 
+              onChange={(e) => setForm(prev => ({ ...prev, start_time: e.target.value }))}
+            >
+              {TIME_SLOTS.map(time => (
+                <option key={time} value={time}>{time}</option>
+              ))}
+            </select>
+          </FormField>
+          
+          <FormField label="Конец">
+            <select 
+              className="form-select" 
+              value={form.end_time} 
+              onChange={(e) => setForm(prev => ({ ...prev, end_time: e.target.value }))}
+            >
+              {TIME_SLOTS.map(time => (
+                <option key={time} value={time}>{time}</option>
+              ))}
+            </select>
+          </FormField>
+        </div>
+        
+        <FormField label="Тип занятия">
+          <select 
+            className="form-select" 
+            value={form.lesson_type} 
+            onChange={(e) => setForm(prev => ({ ...prev, lesson_type: e.target.value }))}
+          >
+            {LESSON_TYPES.map(type => (
+              <option key={type.id} value={type.id}>{type.icon} {type.label}</option>
+            ))}
+          </select>
+        </FormField>
+        
+        <FormField label="Периодичность">
+          <select 
+            className="form-select" 
+            value={form.week_type} 
+            onChange={(e) => setForm(prev => ({ ...prev, week_type: e.target.value }))}
+          >
+            {WEEK_TYPES.map(type => (
+              <option key={type.id} value={type.id}>{type.label}</option>
+            ))}
+          </select>
+        </FormField>
+        
+        {filteredSubgroups.length > 0 && (
+          <FormField label="Подгруппа">
+            <select 
+              className="form-select" 
+              value={form.subgroup_id} 
+              onChange={(e) => setForm(prev => ({ ...prev, subgroup_id: e.target.value }))}
+            >
+              <option value="">Для всей группы</option>
+              {filteredSubgroups.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
           </FormField>
         )}
         
-        {modalType === 'faculty' && (
-          <FormField label="Описание">
-            <Textarea 
-              value={form.description} 
-              onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))} 
-              placeholder="Краткое описание факультета..." 
-            />
-          </FormField>
-        )}
-        
-        {modalType === 'group' && (
-          <>
-            <FormField label="Курс">
-              <select 
-                className="form-select" 
-                value={form.course} 
-                onChange={(e) => setForm(prev => ({ ...prev, course: parseInt(e.target.value) }))}
-              >
-                <option value={1}>1 курс</option>
-                <option value={2}>2 курс</option>
-                <option value={3}>3 курс</option>
-                <option value={4}>4 курс</option>
-                <option value={5}>5 курс (магистратура)</option>
-                <option value={6}>6 курс (магистратура)</option>
-              </select>
-            </FormField>
-            
-            <FormField label="Год набора">
-              <Input 
-                type="number"
-                value={form.year} 
-                onChange={(e) => setForm(prev => ({ ...prev, year: parseInt(e.target.value) }))} 
-                placeholder={new Date().getFullYear().toString()}
-              />
-            </FormField>
-          </>
-        )}
+        <FormField label="Заметки">
+          <Input 
+            value={form.notes} 
+            onChange={(e) => setForm(prev => ({ ...prev, notes: e.target.value }))} 
+            placeholder="Дополнительная информация..."
+          />
+        </FormField>
       </Modal>
 
       {/* Модалка подтверждения удаления */}
@@ -499,8 +606,8 @@ export const FacultiesPage = memo(function FacultiesPage() {
         isOpen={showConfirmDelete}
         onClose={() => setShowConfirmDelete(false)}
         onConfirm={confirmDelete}
-        title="Удалить?"
-        message={`Вы уверены, что хотите удалить "${deleteTarget?.name}"? Это действие нельзя отменить.`}
+        title="Удалить занятие?"
+        message={`Удалить "${deleteTarget?.subject}" из расписания?`}
         confirmText="Удалить"
         cancelText="Отмена"
         variant="danger"
@@ -509,353 +616,4 @@ export const FacultiesPage = memo(function FacultiesPage() {
   );
 });
 
-// ========== КОМПОНЕНТЫ ДЕРЕВА ==========
-
-const FacultyItem = memo(function FacultyItem({ 
-  faculty, 
-  canEdit, 
-  expandedFaculty, 
-  expandedDirection,
-  expandedGroup,
-  onToggleFaculty, 
-  onToggleDirection,
-  onToggleGroup,
-  onEdit, 
-  onDelete 
-}) {
-  const isExpanded = expandedFaculty === faculty.id;
-  const hasDirections = faculty.directions.length > 0;
-
-  return (
-    <div className="structure-card">
-      <div 
-        className="structure-header faculty-header"
-        onClick={() => hasDirections && onToggleFaculty(faculty.id)}
-      >
-        <div className="structure-icon-wrapper">
-          <IconBuilding size={24} color="var(--blue)" />
-        </div>
-        
-        <div className="structure-info">
-          <div className="structure-title">
-            {faculty.name}
-            {faculty.code && <span className="structure-code">{faculty.code}</span>}
-          </div>
-          <div className="structure-meta">
-            {faculty.directions.length} направлений • {
-              faculty.directions.reduce((sum, d) => sum + d.groups.length, 0)
-            } групп
-          </div>
-          {faculty.description && (
-            <div className="structure-description">{faculty.description}</div>
-          )}
-        </div>
-
-        <div className="structure-actions">
-          {canEdit && (
-            <>
-              <button 
-                className="structure-action-btn edit-btn"
-                onClick={(e) => { e.stopPropagation(); onEdit('faculty', null, '', faculty); }}
-                title="Редактировать"
-              >
-                <IconEdit size={18} />
-              </button>
-              <button 
-                className="structure-action-btn delete-btn"
-                onClick={(e) => onDelete('faculty', faculty.id, faculty.name, e)}
-                title="Удалить"
-              >
-                <IconTrash size={18} />
-              </button>
-            </>
-          )}
-          
-          {hasDirections && (
-            <div className="structure-expand">
-              {isExpanded ? 
-                <IconChevronDown size={20} color="var(--text-tertiary)" /> : 
-                <IconChevronRight size={20} color="var(--text-tertiary)" />
-              }
-            </div>
-          )}
-        </div>
-      </div>
-
-      {isExpanded && (
-        <div className="structure-children">
-          {canEdit && (
-            <button 
-              className="structure-add-item-btn"
-              onClick={() => onEdit('direction', faculty.id, faculty.name)}
-            >
-              <IconPlus size={16} />
-              Добавить направление
-            </button>
-          )}
-          
-          {faculty.directions.length === 0 ? (
-            <div className="structure-empty">Нет направлений</div>
-          ) : (
-            faculty.directions.map((direction) => (
-              <DirectionItem
-                key={direction.id}
-                direction={direction}
-                facultyId={faculty.id}
-                facultyName={faculty.name}
-                canEdit={canEdit}
-                expandedDirection={expandedDirection}
-                expandedGroup={expandedGroup}
-                onToggleDirection={onToggleDirection}
-                onToggleGroup={onToggleGroup}
-                onEdit={onEdit}
-                onDelete={onDelete}
-              />
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-});
-
-const DirectionItem = memo(function DirectionItem({ 
-  direction, 
-  facultyId,
-  facultyName,
-  canEdit, 
-  expandedDirection,
-  expandedGroup,
-  onToggleDirection,
-  onToggleGroup,
-  onEdit, 
-  onDelete 
-}) {
-  const isExpanded = expandedDirection === direction.id;
-  const hasGroups = direction.groups.length > 0;
-
-  return (
-    <div className="structure-nested-item">
-      <div 
-        className="structure-header direction-header"
-        onClick={() => hasGroups && onToggleDirection(direction.id)}
-      >
-        <div className="structure-icon-wrapper">
-          <IconBook size={20} color="var(--indigo)" />
-        </div>
-        
-        <div className="structure-info">
-          <div className="structure-title">
-            {direction.name}
-            {direction.code && <span className="structure-code">{direction.code}</span>}
-          </div>
-          <div className="structure-meta">{direction.groups.length} групп</div>
-        </div>
-
-        <div className="structure-actions">
-          {canEdit && (
-            <>
-              <button 
-                className="structure-action-btn edit-btn"
-                onClick={(e) => { e.stopPropagation(); onEdit('direction', facultyId, facultyName, direction); }}
-                title="Редактировать"
-              >
-                <IconEdit size={16} />
-              </button>
-              <button 
-                className="structure-action-btn delete-btn"
-                onClick={(e) => onDelete('direction', direction.id, direction.name, e)}
-                title="Удалить"
-              >
-                <IconTrash size={16} />
-              </button>
-            </>
-          )}
-          
-          {hasGroups && (
-            <div className="structure-expand">
-              {isExpanded ? 
-                <IconChevronDown size={18} color="var(--text-tertiary)" /> : 
-                <IconChevronRight size={18} color="var(--text-tertiary)" />
-              }
-            </div>
-          )}
-        </div>
-      </div>
-
-      {isExpanded && (
-        <div className="structure-children">
-          {canEdit && (
-            <button 
-              className="structure-add-item-btn small"
-              onClick={() => onEdit('group', direction.id, direction.name)}
-            >
-              <IconPlus size={14} />
-              Добавить группу
-            </button>
-          )}
-          
-          {direction.groups.length === 0 ? (
-            <div className="structure-empty small">Нет групп</div>
-          ) : (
-            direction.groups.map((group) => (
-              <GroupItem
-                key={group.id}
-                group={group}
-                directionId={direction.id}
-                directionName={direction.name}
-                canEdit={canEdit}
-                expandedGroup={expandedGroup}
-                onToggleGroup={onToggleGroup}
-                onEdit={onEdit}
-                onDelete={onDelete}
-              />
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-});
-
-const GroupItem = memo(function GroupItem({ 
-  group, 
-  directionId,
-  directionName,
-  canEdit, 
-  expandedGroup,
-  onToggleGroup,
-  onEdit, 
-  onDelete 
-}) {
-  const isExpanded = expandedGroup === group.id;
-  const hasSubgroups = group.subgroups.length > 0;
-
-  return (
-    <div className="structure-nested-item">
-      <div 
-        className="structure-header group-header"
-        onClick={() => hasSubgroups && onToggleGroup(group.id)}
-      >
-        <div className="structure-icon-wrapper">
-          <IconUsers size={18} color="var(--green)" />
-        </div>
-        
-        <div className="structure-info">
-          <div className="structure-title">
-            {group.name}
-            <span className="structure-badge">{group.course} курс</span>
-            {group.year && <span className="structure-badge secondary">{group.year}</span>}
-          </div>
-          {group.subgroups.length > 0 && (
-            <div className="structure-meta">{group.subgroups.length} подгрупп</div>
-          )}
-        </div>
-
-        <div className="structure-actions">
-          {canEdit && (
-            <>
-              <button 
-                className="structure-action-btn edit-btn"
-                onClick={(e) => { e.stopPropagation(); onEdit('group', directionId, directionName, group); }}
-                title="Редактировать"
-              >
-                <IconEdit size={14} />
-              </button>
-              <button 
-                className="structure-action-btn delete-btn"
-                onClick={(e) => onDelete('group', group.id, group.name, e)}
-                title="Удалить"
-              >
-                <IconTrash size={14} />
-              </button>
-            </>
-          )}
-          
-          {hasSubgroups && (
-            <div className="structure-expand">
-              {isExpanded ? 
-                <IconChevronDown size={16} color="var(--text-tertiary)" /> : 
-                <IconChevronRight size={16} color="var(--text-tertiary)" />
-              }
-            </div>
-          )}
-        </div>
-      </div>
-
-      {isExpanded && (
-        <div className="structure-children">
-          {canEdit && (
-            <button 
-              className="structure-add-item-btn small"
-              onClick={() => onEdit('subgroup', group.id, group.name)}
-            >
-              <IconPlus size={12} />
-              Добавить подгруппу
-            </button>
-          )}
-          
-          {group.subgroups.length === 0 ? (
-            <div className="structure-empty small">Нет подгрупп</div>
-          ) : (
-            group.subgroups.map((subgroup) => (
-              <SubgroupItem
-                key={subgroup.id}
-                subgroup={subgroup}
-                groupId={group.id}
-                groupName={group.name}
-                canEdit={canEdit}
-                onEdit={onEdit}
-                onDelete={onDelete}
-              />
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-});
-
-const SubgroupItem = memo(function SubgroupItem({ 
-  subgroup, 
-  groupId,
-  groupName,
-  canEdit, 
-  onEdit, 
-  onDelete 
-}) {
-  return (
-    <div className="structure-nested-item leaf">
-      <div className="structure-header subgroup-header">
-        <div className="structure-icon-wrapper">
-          <IconUser size={16} color="var(--orange)" />
-        </div>
-        
-        <div className="structure-info">
-          <div className="structure-title">{subgroup.name}</div>
-        </div>
-
-        {canEdit && (
-          <div className="structure-actions">
-            <button 
-              className="structure-action-btn edit-btn"
-              onClick={(e) => { e.stopPropagation(); onEdit('subgroup', groupId, groupName, subgroup); }}
-              title="Редактировать"
-            >
-              <IconEdit size={12} />
-            </button>
-            <button 
-              className="structure-action-btn delete-btn"
-              onClick={(e) => onDelete('subgroup', subgroup.id, subgroup.name, e)}
-              title="Удалить"
-            >
-              <IconTrash size={12} />
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-});
-
-export default FacultiesPage;
+export default SchedulePage;
