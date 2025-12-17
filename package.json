@@ -1,6 +1,6 @@
 {
   "name": "uniclub-optimized",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "private": true,
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
@@ -12,8 +12,7 @@
     "start": "react-scripts start",
     "build": "GENERATE_SOURCEMAP=false react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "analyze": "source-map-explorer 'build/static/js/*.js'"
+    "eject": "react-scripts eject"
   },
   "eslintConfig": {
     "extends": ["react-app"]
