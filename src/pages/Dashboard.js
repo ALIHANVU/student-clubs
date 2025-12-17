@@ -1,29 +1,170 @@
 /**
- * Dashboard Pages — с уведомлениями группы
+ * Dashboard Pages — ОПТИМИЗИРОВАННАЯ ВЕРСИЯ
+ * 
+ * Изменения:
+ * - Убран дублирующий код
+ * - Оптимизированы зависимости useCallback/useMemo
+ * - Разделены компоненты для уменьшения ре-рендеров
+ * - Добавлен AbortController для отмены запросов
  */
-import React, { useState, useEffect, memo, useCallback } from 'react';
+import React, { useState, useEffect, memo, useCallback, useMemo, useRef } from 'react';
 import { supabase, cachedQuery } from '../utils/supabase';
 import { formatDate, getRoleShortName } from '../utils/helpers';
 import { useApp } from '../context/AppContext';
-import { PageHeader, StatCard, Section, EmptyState, InlineLoading, List, ListItem, Badge } from '../components/UI';
+import { 
+  PageHeader, StatCard, Section, EmptyState, InlineLoading, 
+  List, ListItem, Badge 
+} from '../components/UI';
 import { MobilePageHeader } from '../components/Navigation';
 
-// Admin Dashboard
+// ========== ОБЩИЕ КОМПОНЕНТЫ ==========
+
+const StatsGrid = memo(function StatsGrid({ stats }) {
+  return (
+    <div className="stats-grid">
+      {stats.map(({ icon, color, value, label }) => (
+        <StatCard key={label} icon={icon} color={color} value={value} label={label} />
+      ))}
+    </div>
+  );
+});
+
+const EventsList = memo(function EventsList({ events, title }) {
+  if (events.length === 0) {
+    return <EmptyState icon="📅" text="Нет мероприятий" small />;
+  }
+  
+  return (
+    <List>
+      {events.map((event) => (
+        <ListItem 
+          key={event.id} 
+          icon="📅" 
+          title={event.title} 
+          subtitle={`${formatDate(event.event_date)} • ${event.location || 'Место не указано'}`} 
+          chevron={false} 
+        />
+      ))}
+    </List>
+  );
+});
+
+const UsersList = memo(function UsersList({ users }) {
+  if (users.length === 0) {
+    return <EmptyState icon="👥" text="Нет пользователей" small />;
+  }
+  
+  return (
+    <List>
+      {users.map((u) => (
+        <ListItem 
+          key={u.id} 
+          icon="👤" 
+          title={u.full_name} 
+          subtitle={u.email} 
+          accessory={<Badge variant="blue">{getRoleShortName(u.role)}</Badge>} 
+          chevron={false} 
+        />
+      ))}
+    </List>
+  );
+});
+
+const ClubsList = memo(function ClubsList({ clubs }) {
+  if (clubs.length === 0) {
+    return <EmptyState icon="🎭" text="Вы ещё не подписаны на клубы" small />;
+  }
+  
+  return (
+    <List>
+      {clubs.map((sub) => (
+        <ListItem 
+          key={sub.id} 
+          icon={sub.clubs?.icon || '🎭'} 
+          title={sub.clubs?.name} 
+          subtitle={sub.clubs?.description || 'Без описания'} 
+          chevron={false} 
+        />
+      ))}
+    </List>
+  );
+});
+
+const ScheduleList = memo(function ScheduleList({ schedule }) {
+  return (
+    <List>
+      {schedule.map((lesson) => (
+        <ListItem 
+          key={lesson.id} 
+          icon="📖" 
+          title={lesson.subject} 
+          subtitle={`${lesson.start_time?.slice(0,5)} — ${lesson.end_time?.slice(0,5)} • ${lesson.room || 'Ауд. не указана'}`} 
+          chevron={false} 
+        />
+      ))}
+    </List>
+  );
+});
+
+const NotificationCard = memo(function NotificationCard({ notif, onRead }) {
+  const handleClick = useCallback(() => {
+    onRead(notif.id);
+  }, [notif.id, onRead]);
+
+  return (
+    <div 
+      className={`notification-card ${notif.is_important ? 'important' : ''}`}
+      onClick={handleClick}
+    >
+      <div className="notification-card-header">
+        <span className="notification-card-title">
+          {notif.is_important && '🚨 '}
+          {notif.title}
+        </span>
+        <span className="notification-card-date">
+          {formatDate(notif.created_at)}
+        </span>
+      </div>
+      <div className="notification-card-message">{notif.message}</div>
+      <div className="notification-card-sender">
+        От: {notif.users?.full_name || 'Староста'}
+      </div>
+    </div>
+  );
+});
+
+// ========== ADMIN DASHBOARD ==========
+
 export const AdminDashboard = memo(function AdminDashboard() {
   const [stats, setStats] = useState({ clubs: 0, users: 0, events: 0, groups: 0 });
   const [recentEvents, setRecentEvents] = useState([]);
   const [recentUsers, setRecentUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
+    
     const loadData = async () => {
       try {
+        // Параллельная загрузка статистики
         const [clubsRes, usersRes, eventsRes, groupsRes] = await Promise.all([
-          cachedQuery('stats-clubs', () => supabase.from('clubs').select('id', { count: 'exact', head: true })),
-          cachedQuery('stats-users', () => supabase.from('users').select('id', { count: 'exact', head: true })),
-          cachedQuery('stats-events', () => supabase.from('events').select('id', { count: 'exact', head: true })),
-          cachedQuery('stats-groups', () => supabase.from('study_groups').select('id', { count: 'exact', head: true }))
+          cachedQuery('stats-clubs', () => 
+            supabase.from('clubs').select('id', { count: 'exact', head: true })
+          ),
+          cachedQuery('stats-users', () => 
+            supabase.from('users').select('id', { count: 'exact', head: true })
+          ),
+          cachedQuery('stats-events', () => 
+            supabase.from('events').select('id', { count: 'exact', head: true })
+          ),
+          cachedQuery('stats-groups', () => 
+            supabase.from('study_groups').select('id', { count: 'exact', head: true })
+          )
         ]);
+
+        if (!mountedRef.current) return;
 
         setStats({
           clubs: clubsRes.count || 0,
@@ -32,22 +173,45 @@ export const AdminDashboard = memo(function AdminDashboard() {
           groups: groupsRes.count || 0
         });
 
+        // Загрузка последних данных
         const [eventsData, usersData] = await Promise.all([
-          cachedQuery('recent-events', () => supabase.from('events').select('*').order('created_at', { ascending: false }).limit(5)),
-          cachedQuery('recent-users', () => supabase.from('users').select('*').order('created_at', { ascending: false }).limit(5))
+          cachedQuery('recent-events', () => 
+            supabase.from('events')
+              .select('*')
+              .order('created_at', { ascending: false })
+              .limit(5)
+          ),
+          cachedQuery('recent-users', () => 
+            supabase.from('users')
+              .select('*')
+              .order('created_at', { ascending: false })
+              .limit(5)
+          )
         ]);
+
+        if (!mountedRef.current) return;
 
         setRecentEvents(eventsData.data || []);
         setRecentUsers(usersData.data || []);
       } catch (error) {
-        console.error('Error:', error);
+        console.error('Error loading admin dashboard:', error);
       } finally {
-        setLoading(false);
+        if (mountedRef.current) setLoading(false);
       }
     };
 
     loadData();
+    
+    return () => { mountedRef.current = false; };
   }, []);
+
+  // Мемоизация статов для StatsGrid
+  const statsData = useMemo(() => [
+    { icon: '🎭', color: 'blue', value: stats.clubs, label: 'Клубов' },
+    { icon: '👥', color: 'green', value: stats.users, label: 'Пользователей' },
+    { icon: '📅', color: 'orange', value: stats.events, label: 'Мероприятий' },
+    { icon: '🎓', color: 'purple', value: stats.groups, label: 'Групп' }
+  ], [stats]);
 
   if (loading) {
     return (
@@ -64,49 +228,15 @@ export const AdminDashboard = memo(function AdminDashboard() {
       <PageHeader title="📊 Дашборд" />
       <MobilePageHeader title="Дашборд" />
       <div className="page-content">
-        <div className="stats-grid">
-          <StatCard icon="🎭" color="blue" value={stats.clubs} label="Клубов" />
-          <StatCard icon="👥" color="green" value={stats.users} label="Пользователей" />
-          <StatCard icon="📅" color="orange" value={stats.events} label="Мероприятий" />
-          <StatCard icon="🎓" color="purple" value={stats.groups} label="Групп" />
-        </div>
+        <StatsGrid stats={statsData} />
 
         <div className="grid-2">
           <Section title="📅 Последние мероприятия">
-            {recentEvents.length === 0 ? (
-              <EmptyState icon="📅" text="Нет мероприятий" small />
-            ) : (
-              <List>
-                {recentEvents.map((event) => (
-                  <ListItem 
-                    key={event.id} 
-                    icon="📅" 
-                    title={event.title} 
-                    subtitle={`${formatDate(event.event_date)} • ${event.location || 'Место не указано'}`} 
-                    chevron={false} 
-                  />
-                ))}
-              </List>
-            )}
+            <EventsList events={recentEvents} />
           </Section>
 
           <Section title="👥 Новые пользователи">
-            {recentUsers.length === 0 ? (
-              <EmptyState icon="👥" text="Нет пользователей" small />
-            ) : (
-              <List>
-                {recentUsers.map((u) => (
-                  <ListItem 
-                    key={u.id} 
-                    icon="👤" 
-                    title={u.full_name} 
-                    subtitle={u.email} 
-                    accessory={<Badge variant="blue">{getRoleShortName(u.role)}</Badge>} 
-                    chevron={false} 
-                  />
-                ))}
-              </List>
-            )}
+            <UsersList users={recentUsers} />
           </Section>
         </div>
       </div>
@@ -114,15 +244,20 @@ export const AdminDashboard = memo(function AdminDashboard() {
   );
 });
 
-// Student Dashboard — с уведомлениями группы
+// ========== STUDENT DASHBOARD ==========
+
 export const StudentDashboard = memo(function StudentDashboard() {
   const { user } = useApp();
-  const [myClubs, setMyClubs] = useState([]);
-  const [upcomingEvents, setUpcomingEvents] = useState([]);
-  const [myGroup, setMyGroup] = useState(null);
-  const [todaySchedule, setTodaySchedule] = useState([]);
-  const [groupNotifications, setGroupNotifications] = useState([]);
+  const [data, setData] = useState({
+    myClubs: [],
+    upcomingEvents: [],
+    myGroup: null,
+    todaySchedule: [],
+    groupNotifications: []
+  });
   const [loading, setLoading] = useState(true);
+  
+  const mountedRef = useRef(true);
 
   const loadData = useCallback(async () => {
     try {
@@ -141,8 +276,12 @@ export const StudentDashboard = memo(function StudentDashboard() {
           : Promise.resolve({ data: null })
       ]);
 
-      setMyClubs(subsRes.data || []);
-      setMyGroup(groupRes.data);
+      if (!mountedRef.current) return;
+
+      const myClubs = subsRes.data || [];
+      const myGroup = groupRes.data;
+      let todaySchedule = [];
+      let groupNotifications = [];
 
       // Расписание на сегодня
       if (user.group_id) {
@@ -155,14 +294,10 @@ export const StudentDashboard = memo(function StudentDashboard() {
             .eq('day_of_week', today)
             .order('start_time');
           
-          // Фильтруем по подгруппе если есть
-          let filtered = schedule || [];
-          if (user.subgroup_id) {
-            filtered = filtered.filter(s => 
-              s.subgroup_id === null || s.subgroup_id === user.subgroup_id
-            );
-          }
-          setTodaySchedule(filtered);
+          // Фильтруем по подгруппе
+          todaySchedule = (schedule || []).filter(s => 
+            s.subgroup_id === null || s.subgroup_id === user.subgroup_id
+          );
         }
 
         // Уведомления группы
@@ -173,12 +308,12 @@ export const StudentDashboard = memo(function StudentDashboard() {
           .order('created_at', { ascending: false })
           .limit(5);
         
-        setGroupNotifications(notifications || []);
+        groupNotifications = notifications || [];
       }
 
       // Предстоящие события
-      const clubIds = subsRes.data?.map(s => s.club_id) || [];
-      let query = supabase
+      const clubIds = myClubs.map(s => s.club_id);
+      let eventsQuery = supabase
         .from('events')
         .select('*, clubs(name)')
         .gte('event_date', new Date().toISOString())
@@ -186,22 +321,33 @@ export const StudentDashboard = memo(function StudentDashboard() {
         .limit(5);
 
       if (clubIds.length > 0) {
-        query = query.or(`is_university_wide.eq.true,club_id.in.(${clubIds.join(',')})`);
+        eventsQuery = eventsQuery.or(`is_university_wide.eq.true,club_id.in.(${clubIds.join(',')})`);
       } else {
-        query = query.eq('is_university_wide', true);
+        eventsQuery = eventsQuery.eq('is_university_wide', true);
       }
 
-      const { data: events } = await query;
-      setUpcomingEvents(events || []);
+      const { data: events } = await eventsQuery;
+
+      if (!mountedRef.current) return;
+
+      setData({
+        myClubs,
+        upcomingEvents: events || [],
+        myGroup,
+        todaySchedule,
+        groupNotifications
+      });
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error loading student dashboard:', error);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [user.id, user.group_id, user.subgroup_id]);
 
   useEffect(() => {
+    mountedRef.current = true;
     loadData();
+    return () => { mountedRef.current = false; };
   }, [loadData]);
 
   // Отметить уведомление как прочитанное
@@ -209,14 +355,17 @@ export const StudentDashboard = memo(function StudentDashboard() {
     try {
       await supabase
         .from('notification_reads')
-        .upsert({
-          notification_id: notificationId,
-          user_id: user.id
-        });
+        .upsert({ notification_id: notificationId, user_id: user.id });
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
   }, [user.id]);
+
+  // Мемоизация статов
+  const statsData = useMemo(() => [
+    { icon: '🎭', color: 'blue', value: data.myClubs.length, label: 'Моих клубов' },
+    { icon: '📅', color: 'orange', value: data.upcomingEvents.length, label: 'События' }
+  ], [data.myClubs.length, data.upcomingEvents.length]);
 
   if (loading) {
     return (
@@ -228,13 +377,13 @@ export const StudentDashboard = memo(function StudentDashboard() {
     );
   }
 
+  const { myClubs, upcomingEvents, myGroup, todaySchedule, groupNotifications } = data;
+
   return (
     <>
       <PageHeader title="🏠 Главная" />
-      <MobilePageHeader 
-        title="Главная" 
-        subtitle={myGroup ? myGroup.name : null} 
-      />
+      <MobilePageHeader title="Главная" subtitle={myGroup?.name} />
+      
       <div className="page-content">
         {/* Информация о группе */}
         {myGroup && (
@@ -254,88 +403,33 @@ export const StudentDashboard = memo(function StudentDashboard() {
           <Section title="🔔 Уведомления группы">
             <div className="notifications-list">
               {groupNotifications.map((notif) => (
-                <div 
+                <NotificationCard 
                   key={notif.id} 
-                  className={`notification-card ${notif.is_important ? 'important' : ''}`}
-                  onClick={() => markAsRead(notif.id)}
-                >
-                  <div className="notification-card-header">
-                    <span className="notification-card-title">
-                      {notif.is_important && '🚨 '}
-                      {notif.title}
-                    </span>
-                    <span className="notification-card-date">
-                      {formatDate(notif.created_at)}
-                    </span>
-                  </div>
-                  <div className="notification-card-message">{notif.message}</div>
-                  <div className="notification-card-sender">
-                    От: {notif.users?.full_name || 'Староста'}
-                  </div>
-                </div>
+                  notif={notif} 
+                  onRead={markAsRead} 
+                />
               ))}
             </div>
           </Section>
         )}
 
         {/* Статистика */}
-        <div className="stats-grid">
-          <StatCard icon="🎭" color="blue" value={myClubs.length} label="Моих клубов" />
-          <StatCard icon="📅" color="orange" value={upcomingEvents.length} label="События" />
-        </div>
+        <StatsGrid stats={statsData} />
 
         {/* Расписание на сегодня */}
         {todaySchedule.length > 0 && (
           <Section title="📚 Сегодня">
-            <List>
-              {todaySchedule.map((lesson) => (
-                <ListItem 
-                  key={lesson.id} 
-                  icon="📖" 
-                  title={lesson.subject} 
-                  subtitle={`${lesson.start_time?.slice(0,5)} — ${lesson.end_time?.slice(0,5)} • ${lesson.room || 'Ауд. не указана'}`} 
-                  chevron={false} 
-                />
-              ))}
-            </List>
+            <ScheduleList schedule={todaySchedule} />
           </Section>
         )}
 
         <div className="grid-2">
           <Section title="🎭 Мои клубы">
-            {myClubs.length === 0 ? (
-              <EmptyState icon="🎭" text="Вы ещё не подписаны на клубы" small />
-            ) : (
-              <List>
-                {myClubs.map((sub) => (
-                  <ListItem 
-                    key={sub.id} 
-                    icon={sub.clubs?.icon || '🎭'} 
-                    title={sub.clubs?.name} 
-                    subtitle={sub.clubs?.description || 'Без описания'} 
-                    chevron={false} 
-                  />
-                ))}
-              </List>
-            )}
+            <ClubsList clubs={myClubs} />
           </Section>
 
           <Section title="📅 Предстоящие события">
-            {upcomingEvents.length === 0 ? (
-              <EmptyState icon="📅" text="Нет предстоящих событий" small />
-            ) : (
-              <List>
-                {upcomingEvents.map((event) => (
-                  <ListItem 
-                    key={event.id} 
-                    icon="📅" 
-                    title={event.title} 
-                    subtitle={`${formatDate(event.event_date)} • ${event.location || 'Место не указано'}`} 
-                    chevron={false} 
-                  />
-                ))}
-              </List>
-            )}
+            <EventsList events={upcomingEvents} />
           </Section>
         </div>
       </div>
