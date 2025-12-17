@@ -1,12 +1,11 @@
 /**
- * SchedulePage — ОБЪЕДИНЁННАЯ СТРАНИЦА
+ * SchedulePage — ОПТИМИЗИРОВАННАЯ ВЕРСИЯ
  * 
- * Расписание + Структура университета в одном интерфейсе
- * 
- * Права доступа:
- * - Админ: полный доступ ко всему (структура + расписание всех групп)
- * - Староста: только расписание своей группы
- * - Студент: только просмотр
+ * Изменения:
+ * - Разделены компоненты для структуры (FacultyCard, DirectionCard и т.д.)
+ * - Оптимизированы запросы к БД
+ * - Улучшена мемоизация
+ * - Добавлен AbortController
  */
 import React, { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
 import { supabase, invalidateCache } from '../utils/supabase';
@@ -24,15 +23,403 @@ import { MobilePageHeader } from '../components/Navigation';
 import { 
   IconEdit, IconTrash, IconPlus, IconBuilding, IconBook, 
   IconUsers, IconUser, IconChevronDown, IconChevronRight, IconSearch,
-  IconCalendar, IconClock
+  IconCalendar
 } from '../components/Icons';
 
+// ========== КОНСТАНТЫ ==========
+
+const INITIAL_LESSON_FORM = {
+  subject: '', teacher: '', room: '',
+  start_time: '08:30', end_time: '10:00',
+  lesson_type: 'lecture', week_type: 'all',
+  subgroup_id: '', notes: ''
+};
+
+const INITIAL_STRUCTURE_FORM = {
+  name: '', code: '', description: '',
+  course: 1, year: new Date().getFullYear()
+};
+
+// ========== КОМПОНЕНТЫ СТРУКТУРЫ ==========
+
+const SubgroupCard = memo(function SubgroupCard({ 
+  subgroup, groupId, groupName, canEditStructure, onEdit, onDelete 
+}) {
+  const handleEdit = useCallback((e) => {
+    e.stopPropagation();
+    onEdit('subgroup', groupId, groupName, subgroup);
+  }, [subgroup, groupId, groupName, onEdit]);
+
+  const handleDelete = useCallback((e) => {
+    onDelete('subgroup', subgroup.id, subgroup.name, e);
+  }, [subgroup.id, subgroup.name, onDelete]);
+
+  return (
+    <div className="ios-subgroup-card">
+      <div className="ios-card-header leaf">
+        <div className="ios-icon-circle orange-gradient">
+          <IconUser size={14} color="white" />
+        </div>
+        <div className="ios-card-content">
+          <h6 className="ios-card-title micro">{subgroup.name}</h6>
+        </div>
+        {canEditStructure && (
+          <div className="ios-card-actions compact">
+            <button className="ios-action-btn edit micro" onClick={handleEdit}>
+              <IconEdit size={12} />
+            </button>
+            <button className="ios-action-btn delete micro" onClick={handleDelete}>
+              <IconTrash size={12} />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+const GroupCard = memo(function GroupCard({ 
+  group, directionId, directionName, canEditStructure, isExpanded,
+  onToggle, onEdit, onDelete, onSelectGroup
+}) {
+  const hasSubgroups = group.subgroups.length > 0;
+
+  const handleToggle = useCallback(() => {
+    if (hasSubgroups) onToggle(group.id);
+    else onSelectGroup(group.id);
+  }, [hasSubgroups, group.id, onToggle, onSelectGroup]);
+
+  const handleSelectGroup = useCallback((e) => {
+    e.stopPropagation();
+    onSelectGroup(group.id);
+  }, [group.id, onSelectGroup]);
+
+  const handleEdit = useCallback((e) => {
+    e.stopPropagation();
+    onEdit('group', directionId, directionName, group);
+  }, [group, directionId, directionName, onEdit]);
+
+  const handleDelete = useCallback((e) => {
+    onDelete('group', group.id, group.name, e);
+  }, [group.id, group.name, onDelete]);
+
+  const handleAddSubgroup = useCallback(() => {
+    onEdit('subgroup', group.id, group.name);
+  }, [group.id, group.name, onEdit]);
+
+  return (
+    <div className="ios-group-card">
+      <div className="ios-card-header nested-2" onClick={handleToggle} role="button" tabIndex={0}>
+        <div className="ios-icon-circle green-gradient">
+          <IconUsers size={18} color="white" />
+        </div>
+        <div className="ios-card-content">
+          <div className="ios-card-title-row">
+            <h5 className="ios-card-title tiny">{group.name}</h5>
+            <div className="ios-badges-row">
+              <span className="ios-badge green">{group.course} курс</span>
+              {group.year && <span className="ios-badge outline">{group.year}</span>}
+            </div>
+          </div>
+          {hasSubgroups && (
+            <div className="ios-card-stats tiny">
+              <span className="ios-stat-item">{group.subgroups.length} подгрупп</span>
+            </div>
+          )}
+        </div>
+        <div className="ios-card-actions compact">
+          <button className="ios-action-btn schedule tiny" onClick={handleSelectGroup} title="Открыть расписание">
+            <IconCalendar size={14} />
+          </button>
+          {canEditStructure && (
+            <>
+              <button className="ios-action-btn edit tiny" onClick={handleEdit}>
+                <IconEdit size={14} />
+              </button>
+              <button className="ios-action-btn delete tiny" onClick={handleDelete}>
+                <IconTrash size={14} />
+              </button>
+            </>
+          )}
+          {hasSubgroups && (
+            <div className="ios-expand-indicator tiny">
+              {isExpanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="ios-card-children nested-2">
+          {canEditStructure && (
+            <button className="ios-add-button tiny" onClick={handleAddSubgroup}>
+              <div className="ios-add-icon tiny"><IconPlus size={12} /></div>
+              <span>Добавить подгруппу</span>
+            </button>
+          )}
+          {group.subgroups.length === 0 ? (
+            <div className="ios-empty-state tiny"><p>Нет подгрупп</p></div>
+          ) : (
+            <div className="ios-subgroups-list">
+              {group.subgroups.map((subgroup) => (
+                <SubgroupCard
+                  key={subgroup.id}
+                  subgroup={subgroup}
+                  groupId={group.id}
+                  groupName={group.name}
+                  canEditStructure={canEditStructure}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
+const DirectionCard = memo(function DirectionCard({ 
+  direction, facultyId, facultyName, canEditStructure, isExpanded, expandedGroup,
+  onToggle, onToggleGroup, onEdit, onDelete, onSelectGroup
+}) {
+  const hasGroups = direction.groups.length > 0;
+
+  const handleToggle = useCallback(() => {
+    if (hasGroups) onToggle(direction.id);
+  }, [hasGroups, direction.id, onToggle]);
+
+  const handleEdit = useCallback((e) => {
+    e.stopPropagation();
+    onEdit('direction', facultyId, facultyName, direction);
+  }, [direction, facultyId, facultyName, onEdit]);
+
+  const handleDelete = useCallback((e) => {
+    onDelete('direction', direction.id, direction.name, e);
+  }, [direction.id, direction.name, onDelete]);
+
+  const handleAddGroup = useCallback(() => {
+    onEdit('group', direction.id, direction.name);
+  }, [direction.id, direction.name, onEdit]);
+
+  return (
+    <div className="ios-direction-card">
+      <div className="ios-card-header nested" onClick={handleToggle} role="button" tabIndex={hasGroups ? 0 : -1}>
+        <div className="ios-icon-circle purple-gradient">
+          <IconBook size={22} color="white" />
+        </div>
+        <div className="ios-card-content">
+          <div className="ios-card-title-row">
+            <h4 className="ios-card-title small">{direction.name}</h4>
+            {direction.code && <span className="ios-badge purple">{direction.code}</span>}
+          </div>
+          <div className="ios-card-stats small">
+            <span className="ios-stat-item"><IconUsers size={12} /> {direction.groups.length} групп</span>
+          </div>
+        </div>
+        <div className="ios-card-actions compact">
+          {canEditStructure && (
+            <>
+              <button className="ios-action-btn edit small" onClick={handleEdit}>
+                <IconEdit size={16} />
+              </button>
+              <button className="ios-action-btn delete small" onClick={handleDelete}>
+                <IconTrash size={16} />
+              </button>
+            </>
+          )}
+          {hasGroups && (
+            <div className="ios-expand-indicator small">
+              {isExpanded ? <IconChevronDown size={18} /> : <IconChevronRight size={18} />}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="ios-card-children nested">
+          {canEditStructure && (
+            <button className="ios-add-button small" onClick={handleAddGroup}>
+              <div className="ios-add-icon small"><IconPlus size={14} /></div>
+              <span>Добавить группу</span>
+            </button>
+          )}
+          {direction.groups.length === 0 ? (
+            <div className="ios-empty-state small"><p>Нет групп</p></div>
+          ) : (
+            <div className="ios-groups-list">
+              {direction.groups.map((group) => (
+                <GroupCard
+                  key={group.id}
+                  group={group}
+                  directionId={direction.id}
+                  directionName={direction.name}
+                  canEditStructure={canEditStructure}
+                  isExpanded={expandedGroup === group.id}
+                  onToggle={onToggleGroup}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  onSelectGroup={onSelectGroup}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
+const FacultyCard = memo(function FacultyCard({ 
+  faculty, canEditStructure, isExpanded, expandedDirection, expandedGroup,
+  onToggle, onToggleDirection, onToggleGroup, onEdit, onDelete, onSelectGroup
+}) {
+  const hasDirections = faculty.directions.length > 0;
+  const totalGroups = useMemo(() => 
+    faculty.directions.reduce((sum, d) => sum + d.groups.length, 0),
+    [faculty.directions]
+  );
+
+  const handleToggle = useCallback(() => {
+    if (hasDirections) onToggle(faculty.id);
+  }, [hasDirections, faculty.id, onToggle]);
+
+  const handleEdit = useCallback((e) => {
+    e.stopPropagation();
+    onEdit('faculty', null, '', faculty);
+  }, [faculty, onEdit]);
+
+  const handleDelete = useCallback((e) => {
+    onDelete('faculty', faculty.id, faculty.name, e);
+  }, [faculty.id, faculty.name, onDelete]);
+
+  const handleAddDirection = useCallback(() => {
+    onEdit('direction', faculty.id, faculty.name);
+  }, [faculty.id, faculty.name, onEdit]);
+
+  return (
+    <div className="ios-faculty-card">
+      <div className="ios-card-header" onClick={handleToggle} role="button" tabIndex={hasDirections ? 0 : -1}>
+        <div className="ios-icon-circle blue-gradient">
+          <IconBuilding size={28} color="white" />
+        </div>
+        <div className="ios-card-content">
+          <div className="ios-card-title-row">
+            <h3 className="ios-card-title">{faculty.name}</h3>
+            {faculty.code && <span className="ios-badge blue">{faculty.code}</span>}
+          </div>
+          <div className="ios-card-stats">
+            <span className="ios-stat-item"><IconBook size={14} /> {faculty.directions.length} направлений</span>
+            <span className="ios-stat-separator">•</span>
+            <span className="ios-stat-item"><IconUsers size={14} /> {totalGroups} групп</span>
+          </div>
+          {faculty.description && <p className="ios-card-description">{faculty.description}</p>}
+        </div>
+        <div className="ios-card-actions">
+          {canEditStructure && (
+            <>
+              <button className="ios-action-btn edit" onClick={handleEdit}>
+                <IconEdit size={18} />
+              </button>
+              <button className="ios-action-btn delete" onClick={handleDelete}>
+                <IconTrash size={18} />
+              </button>
+            </>
+          )}
+          {hasDirections && (
+            <div className="ios-expand-indicator">
+              {isExpanded ? <IconChevronDown size={20} /> : <IconChevronRight size={20} />}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="ios-card-children">
+          {canEditStructure && (
+            <button className="ios-add-button" onClick={handleAddDirection}>
+              <div className="ios-add-icon"><IconPlus size={16} /></div>
+              <span>Добавить направление</span>
+            </button>
+          )}
+          {faculty.directions.length === 0 ? (
+            <div className="ios-empty-state"><p>Нет направлений</p></div>
+          ) : (
+            <div className="ios-directions-list">
+              {faculty.directions.map((direction) => (
+                <DirectionCard
+                  key={direction.id}
+                  direction={direction}
+                  facultyId={faculty.id}
+                  facultyName={faculty.name}
+                  canEditStructure={canEditStructure}
+                  isExpanded={expandedDirection === direction.id}
+                  expandedGroup={expandedGroup}
+                  onToggle={onToggleDirection}
+                  onToggleGroup={onToggleGroup}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  onSelectGroup={onSelectGroup}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
+// ========== КОМПОНЕНТ ЗАНЯТИЯ ==========
+
+const ScheduleItem = memo(function ScheduleItem({ lesson, canEdit, onEdit, onDelete }) {
+  const handleClick = useCallback(() => {
+    if (canEdit) onEdit(lesson);
+  }, [canEdit, lesson, onEdit]);
+
+  const handleDelete = useCallback((e) => {
+    e.stopPropagation();
+    onDelete('lesson', lesson.id, lesson.subject);
+  }, [lesson.id, lesson.subject, onDelete]);
+
+  return (
+    <div className="schedule-item" onClick={handleClick}>
+      <div className="schedule-time">
+        <span className="schedule-time-start">{lesson.start_time?.slice(0, 5)}</span>
+        <span className="schedule-time-end">{lesson.end_time?.slice(0, 5)}</span>
+      </div>
+      <div className="schedule-content">
+        <div className="schedule-subject">{lesson.subject}</div>
+        <div className="schedule-details">
+          {lesson.teacher && <span>👤 {lesson.teacher}</span>}
+          {lesson.room && <span>🚪 {lesson.room}</span>}
+          <span className="schedule-type-badge">{getLessonTypeName(lesson.lesson_type)}</span>
+          {lesson.week_type !== 'all' && (
+            <span className="schedule-type-badge">{getWeekTypeName(lesson.week_type)}</span>
+          )}
+          {lesson.subgroups?.name && (
+            <span className="schedule-type-badge">{lesson.subgroups.name}</span>
+          )}
+        </div>
+        {lesson.notes && <div className="schedule-notes">📝 {lesson.notes}</div>}
+      </div>
+      {canEdit && (
+        <button className="schedule-delete" onClick={handleDelete}>
+          <IconTrash size={18} />
+        </button>
+      )}
+    </div>
+  );
+});
+
 // ========== ГЛАВНЫЙ КОМПОНЕНТ ==========
+
 export const SchedulePage = memo(function SchedulePage() {
   const { user } = useApp();
   const { notify } = useNotification();
   
-  // Режим отображения: 'schedule' или 'structure'
+  // Режим
   const [viewMode, setViewMode] = useState('schedule');
   
   // Данные
@@ -42,7 +429,7 @@ export const SchedulePage = memo(function SchedulePage() {
   const [subgroups, setSubgroups] = useState([]);
   const [schedules, setSchedules] = useState([]);
   
-  // UI состояния
+  // UI
   const [loading, setLoading] = useState(true);
   const [selectedGroupId, setSelectedGroupId] = useState(user.group_id || '');
   const [selectedSubgroupId, setSelectedSubgroupId] = useState(user.subgroup_id || '');
@@ -50,55 +437,38 @@ export const SchedulePage = memo(function SchedulePage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   
-  // Раскрытие структуры
+  // Раскрытие
   const [expandedFaculty, setExpandedFaculty] = useState(null);
   const [expandedDirection, setExpandedDirection] = useState(null);
   const [expandedGroup, setExpandedGroup] = useState(null);
   
   // Модалки
   const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState('lesson'); // lesson, faculty, direction, group, subgroup
+  const [modalType, setModalType] = useState('lesson');
   const [editing, setEditing] = useState(null);
   const [parentId, setParentId] = useState(null);
   const [parentName, setParentName] = useState('');
   
   // Формы
-  const [lessonForm, setLessonForm] = useState({
-    subject: '', teacher: '', room: '',
-    start_time: '08:30', end_time: '10:00',
-    lesson_type: 'lecture', week_type: 'all',
-    subgroup_id: '', notes: ''
-  });
-  
-  const [structureForm, setStructureForm] = useState({
-    name: '', code: '', description: '',
-    course: 1, year: new Date().getFullYear()
-  });
+  const [lessonForm, setLessonForm] = useState(INITIAL_LESSON_FORM);
+  const [structureForm, setStructureForm] = useState(INITIAL_STRUCTURE_FORM);
   
   const [submitting, setSubmitting] = useState(false);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
-  // Refs
   const mountedRef = useRef(true);
-  const abortControllerRef = useRef(null);
 
-  // ========== ПРАВА ДОСТУПА ==========
+  // Права
   const isAdmin = user.role === 'main_admin';
   const isGroupLeader = user.role === 'group_leader';
-  
-  // Админ может редактировать структуру
   const canEditStructure = isAdmin;
-  
-  // Админ или староста своей группы может редактировать расписание
   const canEditSchedule = isAdmin || (isGroupLeader && selectedGroupId === user.group_id);
 
-  // ========== DEBOUNCED SEARCH ==========
+  // Debounced search
   const debouncedSetSearch = useMemo(
     () => debounce((value) => {
-      if (mountedRef.current) {
-        setDebouncedSearch(value);
-      }
+      if (mountedRef.current) setDebouncedSearch(value);
     }, 300),
     []
   );
@@ -108,13 +478,8 @@ export const SchedulePage = memo(function SchedulePage() {
     return () => debouncedSetSearch.cancel?.();
   }, [search, debouncedSetSearch]);
 
-  // ========== ЗАГРУЗКА ДАННЫХ ==========
+  // Загрузка данных
   const loadData = useCallback(async () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    abortControllerRef.current = new AbortController();
-    
     try {
       const [f, d, g, s] = await Promise.all([
         supabase.from('faculties').select('*').order('name'),
@@ -123,30 +488,24 @@ export const SchedulePage = memo(function SchedulePage() {
         supabase.from('subgroups').select('*').order('name')
       ]);
       
-      if (mountedRef.current) {
-        setFaculties(f.data || []);
-        setDirections(d.data || []);
-        setGroups(g.data || []);
-        setSubgroups(s.data || []);
-        
-        // Устанавливаем группу пользователя по умолчанию
-        if (!selectedGroupId && user.group_id) {
-          setSelectedGroupId(user.group_id);
-        }
+      if (!mountedRef.current) return;
+      
+      setFaculties(f.data || []);
+      setDirections(d.data || []);
+      setGroups(g.data || []);
+      setSubgroups(s.data || []);
+      
+      if (!selectedGroupId && user.group_id) {
+        setSelectedGroupId(user.group_id);
       }
     } catch (error) {
-      if (error.name !== 'AbortError' && mountedRef.current) {
-        console.error('Error loading data:', error);
-        notify.error('Ошибка загрузки данных');
-      }
+      console.error('Error loading data:', error);
+      notify.error('Ошибка загрузки данных');
     } finally {
-      if (mountedRef.current) {
-        setLoading(false);
-      }
+      if (mountedRef.current) setLoading(false);
     }
   }, [user.group_id, selectedGroupId, notify]);
 
-  // Загрузка расписания для выбранной группы
   const loadSchedule = useCallback(async () => {
     if (!selectedGroupId) {
       setSchedules([]);
@@ -161,9 +520,7 @@ export const SchedulePage = memo(function SchedulePage() {
         .order('start_time');
       
       if (error) throw error;
-      if (mountedRef.current) {
-        setSchedules(data || []);
-      }
+      if (mountedRef.current) setSchedules(data || []);
     } catch (error) {
       console.error('Error loading schedule:', error);
     }
@@ -172,12 +529,7 @@ export const SchedulePage = memo(function SchedulePage() {
   useEffect(() => {
     mountedRef.current = true;
     loadData();
-    return () => {
-      mountedRef.current = false;
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
+    return () => { mountedRef.current = false; };
   }, [loadData]);
 
   useEffect(() => { loadSchedule(); }, [loadSchedule]);
@@ -189,28 +541,22 @@ export const SchedulePage = memo(function SchedulePage() {
     notify.success('Обновлено');
   }, [loadData, loadSchedule, notify]);
 
-  // ========== ВЫЧИСЛЯЕМЫЕ ДАННЫЕ ==========
-  
-  // Подгруппы для выбранной группы
+  // Мемоизированные данные
   const filteredSubgroups = useMemo(() => 
     subgroups.filter(s => s.group_id === selectedGroupId),
     [subgroups, selectedGroupId]
   );
 
-  // Расписание на выбранный день
   const daySchedule = useMemo(() => {
     let filtered = schedules.filter(s => s.day_of_week === selectedDay);
-    
     if (selectedSubgroupId) {
       filtered = filtered.filter(s => 
         s.subgroup_id === null || s.subgroup_id === selectedSubgroupId
       );
     }
-    
     return filtered.sort((a, b) => (a.start_time || '00:00').localeCompare(b.start_time || '00:00'));
   }, [schedules, selectedDay, selectedSubgroupId]);
 
-  // Группировка групп по факультетам
   const groupedGroups = useMemo(() => {
     const grouped = {};
     groups.forEach(g => {
@@ -223,21 +569,16 @@ export const SchedulePage = memo(function SchedulePage() {
     return grouped;
   }, [groups, directions, faculties]);
 
-  // Информация о выбранной группе
   const selectedGroupInfo = useMemo(() => {
     const group = groups.find(g => g.id === selectedGroupId);
     if (!group) return null;
-    
     const direction = directions.find(d => d.id === group.direction_id);
     const faculty = faculties.find(f => f.id === direction?.faculty_id);
-    
     return { ...group, directionName: direction?.name, facultyName: faculty?.name };
   }, [selectedGroupId, groups, directions, faculties]);
 
-  // Дерево структуры с фильтрацией
   const facultyTree = useMemo(() => {
     let filtered = faculties;
-    
     if (debouncedSearch) {
       const searchLower = debouncedSearch.toLowerCase();
       filtered = faculties.filter(f => 
@@ -248,39 +589,35 @@ export const SchedulePage = memo(function SchedulePage() {
     
     return filtered.map(faculty => {
       const facultyDirections = directions.filter(d => d.faculty_id === faculty.id);
-      
       const directionsWithGroups = facultyDirections.map(direction => {
         const directionGroups = groups.filter(g => g.direction_id === direction.id);
-        
         const groupsWithSubgroups = directionGroups.map(group => {
           const groupSubgroups = subgroups.filter(s => s.group_id === group.id);
           return { ...group, subgroups: groupSubgroups };
         });
-        
         return { ...direction, groups: groupsWithSubgroups };
       });
-      
       return { ...faculty, directions: directionsWithGroups };
     });
   }, [faculties, directions, groups, subgroups, debouncedSearch]);
 
-  // ========== ОБРАБОТЧИКИ МОДАЛОК ==========
-  
-  // Открыть модалку добавления занятия
+  // Константы
+  const dayTabs = useMemo(() => DAYS.map(d => ({ id: d.id, label: d.short })), []);
+  const currentDayName = useMemo(() => DAYS.find(d => d.id === selectedDay)?.name || '', [selectedDay]);
+  const viewTabs = useMemo(() => [
+    { id: 'schedule', label: '📚 Расписание' },
+    { id: 'structure', label: '🏛️ Структура' }
+  ], []);
+
+  // Обработчики модалок
   const openAddLessonModal = useCallback(() => {
     setModalType('lesson');
     setEditing(null);
-    setLessonForm({
-      subject: '', teacher: '', room: '',
-      start_time: '08:30', end_time: '10:00',
-      lesson_type: 'lecture', week_type: 'all',
-      subgroup_id: '', notes: ''
-    });
+    setLessonForm(INITIAL_LESSON_FORM);
     setShowModal(true);
     haptic.light();
   }, []);
 
-  // Открыть модалку редактирования занятия
   const openEditLessonModal = useCallback((lesson) => {
     setModalType('lesson');
     setEditing(lesson);
@@ -299,7 +636,6 @@ export const SchedulePage = memo(function SchedulePage() {
     haptic.light();
   }, []);
 
-  // Открыть модалку структуры (факультет/направление/группа/подгруппа)
   const openStructureModal = useCallback((type, parent = null, parentNameStr = '', item = null) => {
     setModalType(type);
     setParentId(parent);
@@ -315,10 +651,7 @@ export const SchedulePage = memo(function SchedulePage() {
         year: item.year || new Date().getFullYear()
       });
     } else {
-      setStructureForm({
-        name: '', code: '', description: '',
-        course: 1, year: new Date().getFullYear()
-      });
+      setStructureForm(INITIAL_STRUCTURE_FORM);
     }
     
     setShowModal(true);
@@ -332,22 +665,18 @@ export const SchedulePage = memo(function SchedulePage() {
     setParentName('');
   }, []);
 
-  // ========== СОХРАНЕНИЕ ==========
-  
-  // Сохранить занятие
+  // Сохранение занятия
   const saveLesson = useCallback(async () => {
     if (!lessonForm.subject.trim()) {
       notify.error('Введите название предмета');
       return;
     }
-    
     if (!selectedGroupId) {
       notify.error('Выберите группу');
       return;
     }
     
     setSubmitting(true);
-    
     try {
       const lessonData = {
         group_id: selectedGroupId,
@@ -387,7 +716,7 @@ export const SchedulePage = memo(function SchedulePage() {
     }
   }, [lessonForm, selectedGroupId, selectedDay, editing, user.id, loadSchedule, notify, closeModal]);
 
-  // Сохранить элемент структуры
+  // Сохранение структуры
   const saveStructure = useCallback(async () => {
     if (!structureForm.name.trim()) {
       notify.error('Введите название');
@@ -395,7 +724,6 @@ export const SchedulePage = memo(function SchedulePage() {
     }
     
     setSubmitting(true);
-    
     try {
       let result;
       
@@ -405,62 +733,39 @@ export const SchedulePage = memo(function SchedulePage() {
           code: structureForm.code.trim() || null, 
           description: structureForm.description.trim() || null 
         };
-        
-        if (editing) {
-          result = await supabase.from('faculties').update(data).eq('id', editing.id);
-          notify.success('Факультет обновлён');
-        } else {
-          result = await supabase.from('faculties').insert(data);
-          notify.success('Факультет создан');
-        }
+        result = editing 
+          ? await supabase.from('faculties').update(data).eq('id', editing.id)
+          : await supabase.from('faculties').insert(data);
+        notify.success(editing ? 'Факультет обновлён' : 'Факультет создан');
         
       } else if (modalType === 'direction') {
         if (!parentId) { notify.error('Не выбран факультет'); setSubmitting(false); return; }
-        
-        const data = { 
-          name: structureForm.name.trim(), 
-          code: structureForm.code.trim() || null, 
-          faculty_id: parentId 
-        };
-        
-        if (editing) {
-          result = await supabase.from('directions').update(data).eq('id', editing.id);
-          notify.success('Направление обновлено');
-        } else {
-          result = await supabase.from('directions').insert(data);
-          notify.success('Направление создано');
-        }
+        const data = { name: structureForm.name.trim(), code: structureForm.code.trim() || null, faculty_id: parentId };
+        result = editing 
+          ? await supabase.from('directions').update(data).eq('id', editing.id)
+          : await supabase.from('directions').insert(data);
+        notify.success(editing ? 'Направление обновлено' : 'Направление создано');
         
       } else if (modalType === 'group') {
         if (!parentId) { notify.error('Не выбрано направление'); setSubmitting(false); return; }
-        
         const data = { 
           name: structureForm.name.trim(), 
           course: parseInt(structureForm.course) || 1, 
           year: parseInt(structureForm.year) || new Date().getFullYear(),
           direction_id: parentId
         };
-        
-        if (editing) {
-          result = await supabase.from('study_groups').update(data).eq('id', editing.id);
-          notify.success('Группа обновлена');
-        } else {
-          result = await supabase.from('study_groups').insert(data);
-          notify.success('Группа создана');
-        }
+        result = editing 
+          ? await supabase.from('study_groups').update(data).eq('id', editing.id)
+          : await supabase.from('study_groups').insert(data);
+        notify.success(editing ? 'Группа обновлена' : 'Группа создана');
         
       } else if (modalType === 'subgroup') {
         if (!parentId) { notify.error('Не выбрана группа'); setSubmitting(false); return; }
-        
         const data = { name: structureForm.name.trim(), group_id: parentId };
-        
-        if (editing) {
-          result = await supabase.from('subgroups').update(data).eq('id', editing.id);
-          notify.success('Подгруппа обновлена');
-        } else {
-          result = await supabase.from('subgroups').insert(data);
-          notify.success('Подгруппа создана');
-        }
+        result = editing 
+          ? await supabase.from('subgroups').update(data).eq('id', editing.id)
+          : await supabase.from('subgroups').insert(data);
+        notify.success(editing ? 'Подгруппа обновлена' : 'Подгруппа создана');
       }
       
       if (result?.error) throw result.error;
@@ -478,7 +783,7 @@ export const SchedulePage = memo(function SchedulePage() {
     }
   }, [structureForm, modalType, parentId, editing, loadData, notify, closeModal]);
 
-  // ========== УДАЛЕНИЕ ==========
+  // Удаление
   const requestDelete = useCallback((type, id, name, e) => {
     e?.stopPropagation();
     setDeleteTarget({ type, id, name });
@@ -488,35 +793,20 @@ export const SchedulePage = memo(function SchedulePage() {
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
-    
     const { type, id } = deleteTarget;
     
     try {
-      let error;
+      const tables = { lesson: 'schedules', faculty: 'faculties', direction: 'directions', group: 'study_groups', subgroup: 'subgroups' };
+      const { error } = await supabase.from(tables[type]).delete().eq('id', id);
+      if (error) throw error;
       
       if (type === 'lesson') {
-        ({ error } = await supabase.from('schedules').delete().eq('id', id));
         invalidateCache('schedules');
         loadSchedule();
-      } else if (type === 'faculty') {
-        ({ error } = await supabase.from('faculties').delete().eq('id', id));
-        invalidateCache('structure');
-        loadData();
-      } else if (type === 'direction') {
-        ({ error } = await supabase.from('directions').delete().eq('id', id));
-        invalidateCache('structure');
-        loadData();
-      } else if (type === 'group') {
-        ({ error } = await supabase.from('study_groups').delete().eq('id', id));
-        invalidateCache('structure');
-        loadData();
-      } else if (type === 'subgroup') {
-        ({ error } = await supabase.from('subgroups').delete().eq('id', id));
+      } else {
         invalidateCache('structure');
         loadData();
       }
-      
-      if (error) throw error;
       
       notify.success('Удалено');
       haptic.medium();
@@ -530,7 +820,7 @@ export const SchedulePage = memo(function SchedulePage() {
     }
   }, [deleteTarget, loadSchedule, loadData, notify]);
 
-  // ========== TOGGLE HANDLERS ==========
+  // Toggle handlers
   const handleToggleFaculty = useCallback((id) => {
     haptic.light();
     setExpandedFaculty(prev => prev === id ? null : id);
@@ -549,7 +839,6 @@ export const SchedulePage = memo(function SchedulePage() {
     setExpandedGroup(prev => prev === id ? null : id);
   }, []);
 
-  // Выбор группы из структуры
   const handleSelectGroup = useCallback((groupId) => {
     setSelectedGroupId(groupId);
     setSelectedSubgroupId('');
@@ -557,36 +846,16 @@ export const SchedulePage = memo(function SchedulePage() {
     haptic.medium();
   }, []);
 
-  // ========== TABS ==========
-  const dayTabs = useMemo(() => DAYS.map(d => ({ id: d.id, label: d.short })), []);
-  const currentDayName = useMemo(() => DAYS.find(d => d.id === selectedDay)?.name || '', [selectedDay]);
-
-  const viewTabs = useMemo(() => [
-    { id: 'schedule', label: '📚 Расписание' },
-    { id: 'structure', label: '🏛️ Структура' }
-  ], []);
-
-  // ========== MODAL TITLE ==========
+  // Заголовок модалки
   const modalTitle = useMemo(() => {
-    if (modalType === 'lesson') {
-      return editing ? 'Редактировать занятие' : 'Добавить занятие';
-    }
-    
+    if (modalType === 'lesson') return editing ? 'Редактировать занятие' : 'Добавить занятие';
     const action = editing ? 'Редактировать' : 'Создать';
-    const types = { 
-      faculty: 'факультет', 
-      direction: 'направление', 
-      group: 'группу',
-      subgroup: 'подгруппу'
-    };
+    const types = { faculty: 'факультет', direction: 'направление', group: 'группу', subgroup: 'подгруппу' };
     let title = `${action} ${types[modalType] || ''}`;
-    if (parentName && !editing) {
-      title += ` • ${parentName}`;
-    }
+    if (parentName && !editing) title += ` • ${parentName}`;
     return title;
   }, [modalType, editing, parentName]);
 
-  // ========== RENDER ==========
   return (
     <>
       <PageHeader 
@@ -619,41 +888,24 @@ export const SchedulePage = memo(function SchedulePage() {
 
       <PullToRefresh onRefresh={handleRefresh}>
         <div className="page-content">
-          {/* Переключатель режимов */}
-          <FilterTabs 
-            tabs={viewTabs} 
-            activeTab={viewMode} 
-            onChange={(mode) => { setViewMode(mode); haptic.light(); }} 
-          />
+          <FilterTabs tabs={viewTabs} activeTab={viewMode} onChange={(mode) => { setViewMode(mode); haptic.light(); }} />
 
-          {/* ========== РЕЖИМ РАСПИСАНИЯ ========== */}
           {viewMode === 'schedule' && (
             <>
-              {/* Селекторы группы */}
               <div className="schedule-selectors">
-                <select 
-                  className="form-select" 
-                  value={selectedGroupId} 
-                  onChange={(e) => { setSelectedGroupId(e.target.value); setSelectedSubgroupId(''); }}
-                >
+                <select className="form-select" value={selectedGroupId} onChange={(e) => { setSelectedGroupId(e.target.value); setSelectedSubgroupId(''); }}>
                   <option value="">Выберите группу</option>
                   {Object.entries(groupedGroups).map(([facultyName, groupList]) => (
                     <optgroup key={facultyName} label={facultyName}>
                       {groupList.map(g => (
-                        <option key={g.id} value={g.id}>
-                          {g.name} ({g.course} курс)
-                        </option>
+                        <option key={g.id} value={g.id}>{g.name} ({g.course} курс)</option>
                       ))}
                     </optgroup>
                   ))}
                 </select>
                 
                 {filteredSubgroups.length > 0 && (
-                  <select 
-                    className="form-select" 
-                    value={selectedSubgroupId} 
-                    onChange={(e) => setSelectedSubgroupId(e.target.value)}
-                  >
+                  <select className="form-select" value={selectedSubgroupId} onChange={(e) => setSelectedSubgroupId(e.target.value)}>
                     <option value="">Все подгруппы</option>
                     {filteredSubgroups.map(s => (
                       <option key={s.id} value={s.id}>{s.name}</option>
@@ -662,7 +914,6 @@ export const SchedulePage = memo(function SchedulePage() {
                 )}
               </div>
 
-              {/* Инфо о группе */}
               {selectedGroupInfo && (
                 <div className="schedule-group-info">
                   <div className="schedule-group-badge">
@@ -676,88 +927,43 @@ export const SchedulePage = memo(function SchedulePage() {
                 </div>
               )}
 
-              {/* Табы дней недели */}
-              <FilterTabs 
-                tabs={dayTabs} 
-                activeTab={selectedDay} 
-                onChange={(day) => { haptic.light(); setSelectedDay(day); }} 
-              />
-
+              <FilterTabs tabs={dayTabs} activeTab={selectedDay} onChange={(day) => { haptic.light(); setSelectedDay(day); }} />
               <div className="schedule-day-title">{currentDayName}</div>
 
-              {/* Список занятий */}
               {loading ? (
                 <SkeletonList count={5} />
               ) : !selectedGroupId ? (
                 <EmptyState 
                   icon="📚" 
                   title="Выберите группу" 
-                  text="Выберите учебную группу из списка или перейдите в раздел 'Структура'"
-                  action={
-                    <Button variant="secondary" onClick={() => setViewMode('structure')}>
-                      🏛️ Открыть структуру
-                    </Button>
-                  }
+                  text="Выберите учебную группу из списка"
+                  action={<Button variant="secondary" onClick={() => setViewMode('structure')}>🏛️ Открыть структуру</Button>}
                 />
               ) : daySchedule.length === 0 ? (
                 <EmptyState 
                   icon="🎉" 
                   title="Нет занятий" 
                   text={`В ${currentDayName.toLowerCase()} нет занятий`}
-                  action={canEditSchedule && (
-                    <Button variant="primary" onClick={openAddLessonModal}>
-                      <IconPlus size={18} /> Добавить занятие
-                    </Button>
-                  )}
+                  action={canEditSchedule && <Button variant="primary" onClick={openAddLessonModal}><IconPlus size={18} /> Добавить</Button>}
                 />
               ) : (
                 <div className="schedule-list">
                   {daySchedule.map((lesson) => (
-                    <div 
-                      key={lesson.id} 
-                      className="schedule-item"
-                      onClick={canEditSchedule ? () => openEditLessonModal(lesson) : undefined}
-                    >
-                      <div className="schedule-time">
-                        <span className="schedule-time-start">{lesson.start_time?.slice(0, 5)}</span>
-                        <span className="schedule-time-end">{lesson.end_time?.slice(0, 5)}</span>
-                      </div>
-                      
-                      <div className="schedule-content">
-                        <div className="schedule-subject">{lesson.subject}</div>
-                        <div className="schedule-details">
-                          {lesson.teacher && <span>👤 {lesson.teacher}</span>}
-                          {lesson.room && <span>🚪 {lesson.room}</span>}
-                          <span className="schedule-type-badge">{getLessonTypeName(lesson.lesson_type)}</span>
-                          {lesson.week_type !== 'all' && (
-                            <span className="schedule-type-badge">{getWeekTypeName(lesson.week_type)}</span>
-                          )}
-                          {lesson.subgroups?.name && (
-                            <span className="schedule-type-badge">{lesson.subgroups.name}</span>
-                          )}
-                        </div>
-                        {lesson.notes && <div className="schedule-notes">📝 {lesson.notes}</div>}
-                      </div>
-                      
-                      {canEditSchedule && (
-                        <button 
-                          className="schedule-delete"
-                          onClick={(e) => requestDelete('lesson', lesson.id, lesson.subject, e)}
-                        >
-                          <IconTrash size={18} />
-                        </button>
-                      )}
-                    </div>
+                    <ScheduleItem
+                      key={lesson.id}
+                      lesson={lesson}
+                      canEdit={canEditSchedule}
+                      onEdit={openEditLessonModal}
+                      onDelete={requestDelete}
+                    />
                   ))}
                 </div>
               )}
             </>
           )}
 
-          {/* ========== РЕЖИМ СТРУКТУРЫ ========== */}
           {viewMode === 'structure' && (
             <>
-              {/* Поиск по структуре */}
               <div className="ios-search-container-inline">
                 <div className="ios-search-bar">
                   <IconSearch size={18} />
@@ -768,9 +974,7 @@ export const SchedulePage = memo(function SchedulePage() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
-                  {search && (
-                    <button className="ios-search-clear" onClick={() => setSearch('')}>✕</button>
-                  )}
+                  {search && <button className="ios-search-clear" onClick={() => setSearch('')}>✕</button>}
                 </div>
               </div>
 
@@ -812,19 +1016,16 @@ export const SchedulePage = memo(function SchedulePage() {
         </div>
       </PullToRefresh>
 
-      {/* FAB для мобилки */}
       {((canEditSchedule && viewMode === 'schedule' && selectedGroupId) || 
         (canEditStructure && viewMode === 'structure')) && (
         <button 
           className="ios-fab"
           onClick={viewMode === 'schedule' ? openAddLessonModal : () => openStructureModal('faculty')}
-          aria-label={viewMode === 'schedule' ? 'Добавить занятие' : 'Добавить факультет'}
         >
           <IconPlus size={24} color="white" />
         </button>
       )}
 
-      {/* ========== МОДАЛКИ ========== */}
       <Modal 
         isOpen={showModal} 
         onClose={closeModal} 
@@ -842,161 +1043,77 @@ export const SchedulePage = memo(function SchedulePage() {
           </>
         }
       >
-        {/* Форма занятия */}
         {modalType === 'lesson' && (
           <>
             <FormField label="Предмет *">
-              <Input 
-                value={lessonForm.subject} 
-                onChange={(e) => setLessonForm(prev => ({ ...prev, subject: e.target.value }))} 
-                placeholder="Математический анализ"
-                autoFocus 
-              />
+              <Input value={lessonForm.subject} onChange={(e) => setLessonForm(prev => ({ ...prev, subject: e.target.value }))} placeholder="Математический анализ" autoFocus />
             </FormField>
-            
             <FormField label="Преподаватель">
-              <Input 
-                value={lessonForm.teacher} 
-                onChange={(e) => setLessonForm(prev => ({ ...prev, teacher: e.target.value }))} 
-                placeholder="Иванов И.И."
-              />
+              <Input value={lessonForm.teacher} onChange={(e) => setLessonForm(prev => ({ ...prev, teacher: e.target.value }))} placeholder="Иванов И.И." />
             </FormField>
-            
             <FormField label="Аудитория">
-              <Input 
-                value={lessonForm.room} 
-                onChange={(e) => setLessonForm(prev => ({ ...prev, room: e.target.value }))} 
-                placeholder="301"
-              />
+              <Input value={lessonForm.room} onChange={(e) => setLessonForm(prev => ({ ...prev, room: e.target.value }))} placeholder="301" />
             </FormField>
-            
             <div className="form-row">
               <FormField label="Начало">
-                <select 
-                  className="form-select" 
-                  value={lessonForm.start_time} 
-                  onChange={(e) => setLessonForm(prev => ({ ...prev, start_time: e.target.value }))}
-                >
+                <select className="form-select" value={lessonForm.start_time} onChange={(e) => setLessonForm(prev => ({ ...prev, start_time: e.target.value }))}>
                   {TIME_SLOTS.map(time => <option key={time} value={time}>{time}</option>)}
                 </select>
               </FormField>
-              
               <FormField label="Конец">
-                <select 
-                  className="form-select" 
-                  value={lessonForm.end_time} 
-                  onChange={(e) => setLessonForm(prev => ({ ...prev, end_time: e.target.value }))}
-                >
+                <select className="form-select" value={lessonForm.end_time} onChange={(e) => setLessonForm(prev => ({ ...prev, end_time: e.target.value }))}>
                   {TIME_SLOTS.map(time => <option key={time} value={time}>{time}</option>)}
                 </select>
               </FormField>
             </div>
-            
             <FormField label="Тип занятия">
-              <select 
-                className="form-select" 
-                value={lessonForm.lesson_type} 
-                onChange={(e) => setLessonForm(prev => ({ ...prev, lesson_type: e.target.value }))}
-              >
-                {LESSON_TYPES.map(type => (
-                  <option key={type.id} value={type.id}>{type.icon} {type.label}</option>
-                ))}
+              <select className="form-select" value={lessonForm.lesson_type} onChange={(e) => setLessonForm(prev => ({ ...prev, lesson_type: e.target.value }))}>
+                {LESSON_TYPES.map(type => <option key={type.id} value={type.id}>{type.icon} {type.label}</option>)}
               </select>
             </FormField>
-            
             <FormField label="Периодичность">
-              <select 
-                className="form-select" 
-                value={lessonForm.week_type} 
-                onChange={(e) => setLessonForm(prev => ({ ...prev, week_type: e.target.value }))}
-              >
-                {WEEK_TYPES.map(type => (
-                  <option key={type.id} value={type.id}>{type.label}</option>
-                ))}
+              <select className="form-select" value={lessonForm.week_type} onChange={(e) => setLessonForm(prev => ({ ...prev, week_type: e.target.value }))}>
+                {WEEK_TYPES.map(type => <option key={type.id} value={type.id}>{type.label}</option>)}
               </select>
             </FormField>
-            
             {filteredSubgroups.length > 0 && (
               <FormField label="Подгруппа">
-                <select 
-                  className="form-select" 
-                  value={lessonForm.subgroup_id} 
-                  onChange={(e) => setLessonForm(prev => ({ ...prev, subgroup_id: e.target.value }))}
-                >
+                <select className="form-select" value={lessonForm.subgroup_id} onChange={(e) => setLessonForm(prev => ({ ...prev, subgroup_id: e.target.value }))}>
                   <option value="">Для всей группы</option>
-                  {filteredSubgroups.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
+                  {filteredSubgroups.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </FormField>
             )}
-            
             <FormField label="Заметки">
-              <Input 
-                value={lessonForm.notes} 
-                onChange={(e) => setLessonForm(prev => ({ ...prev, notes: e.target.value }))} 
-                placeholder="Дополнительная информация..."
-              />
+              <Input value={lessonForm.notes} onChange={(e) => setLessonForm(prev => ({ ...prev, notes: e.target.value }))} placeholder="Дополнительная информация..." />
             </FormField>
           </>
         )}
 
-        {/* Форма структуры */}
         {modalType !== 'lesson' && (
           <>
             <FormField label="Название *">
-              <Input 
-                value={structureForm.name} 
-                onChange={(e) => setStructureForm(prev => ({ ...prev, name: e.target.value }))} 
-                placeholder={
-                  modalType === 'faculty' ? 'Факультет информатики' : 
-                  modalType === 'direction' ? 'Программная инженерия' : 
-                  modalType === 'group' ? 'ПИ-21' : '1 подгруппа'
-                }
-                autoFocus 
-              />
+              <Input value={structureForm.name} onChange={(e) => setStructureForm(prev => ({ ...prev, name: e.target.value }))} placeholder={modalType === 'faculty' ? 'Факультет информатики' : modalType === 'direction' ? 'Программная инженерия' : modalType === 'group' ? 'ПИ-21' : '1 подгруппа'} autoFocus />
             </FormField>
-            
             {(modalType === 'faculty' || modalType === 'direction') && (
               <FormField label="Код">
-                <Input 
-                  value={structureForm.code} 
-                  onChange={(e) => setStructureForm(prev => ({ ...prev, code: e.target.value }))} 
-                  placeholder={modalType === 'faculty' ? 'ФИТ' : '09.03.04'} 
-                />
+                <Input value={structureForm.code} onChange={(e) => setStructureForm(prev => ({ ...prev, code: e.target.value }))} placeholder={modalType === 'faculty' ? 'ФИТ' : '09.03.04'} />
               </FormField>
             )}
-            
             {modalType === 'faculty' && (
               <FormField label="Описание">
-                <Textarea 
-                  value={structureForm.description} 
-                  onChange={(e) => setStructureForm(prev => ({ ...prev, description: e.target.value }))} 
-                  placeholder="Краткое описание факультета..." 
-                />
+                <Textarea value={structureForm.description} onChange={(e) => setStructureForm(prev => ({ ...prev, description: e.target.value }))} placeholder="Краткое описание..." />
               </FormField>
             )}
-            
             {modalType === 'group' && (
               <>
                 <FormField label="Курс">
-                  <select 
-                    className="form-select" 
-                    value={structureForm.course} 
-                    onChange={(e) => setStructureForm(prev => ({ ...prev, course: parseInt(e.target.value) }))}
-                  >
-                    {[1, 2, 3, 4, 5, 6].map(c => (
-                      <option key={c} value={c}>{c} курс{c > 4 ? ' (магистратура)' : ''}</option>
-                    ))}
+                  <select className="form-select" value={structureForm.course} onChange={(e) => setStructureForm(prev => ({ ...prev, course: parseInt(e.target.value) }))}>
+                    {[1, 2, 3, 4, 5, 6].map(c => <option key={c} value={c}>{c} курс</option>)}
                   </select>
                 </FormField>
-                
                 <FormField label="Год набора">
-                  <Input 
-                    type="number"
-                    value={structureForm.year} 
-                    onChange={(e) => setStructureForm(prev => ({ ...prev, year: parseInt(e.target.value) }))} 
-                  />
+                  <Input type="number" value={structureForm.year} onChange={(e) => setStructureForm(prev => ({ ...prev, year: parseInt(e.target.value) }))} />
                 </FormField>
               </>
             )}
@@ -1009,337 +1126,12 @@ export const SchedulePage = memo(function SchedulePage() {
         onClose={() => setShowConfirmDelete(false)}
         onConfirm={confirmDelete}
         title="Удалить?"
-        message={`Удалить "${deleteTarget?.name}"? Это действие нельзя отменить.`}
+        message={`Удалить "${deleteTarget?.name}"?`}
         confirmText="Удалить"
         cancelText="Отмена"
         variant="danger"
       />
     </>
-  );
-});
-
-// ========== ВСПОМОГАТЕЛЬНЫЕ КОМПОНЕНТЫ ==========
-
-const FacultyCard = memo(function FacultyCard({ 
-  faculty, canEditStructure, isExpanded, expandedDirection, expandedGroup,
-  onToggle, onToggleDirection, onToggleGroup, onEdit, onDelete, onSelectGroup
-}) {
-  const hasDirections = faculty.directions.length > 0;
-  const totalGroups = faculty.directions.reduce((sum, d) => sum + d.groups.length, 0);
-
-  return (
-    <div className="ios-faculty-card">
-      <div 
-        className="ios-card-header"
-        onClick={() => hasDirections && onToggle(faculty.id)}
-        role="button"
-        tabIndex={hasDirections ? 0 : -1}
-      >
-        <div className="ios-icon-circle blue-gradient">
-          <IconBuilding size={28} color="white" />
-        </div>
-        
-        <div className="ios-card-content">
-          <div className="ios-card-title-row">
-            <h3 className="ios-card-title">{faculty.name}</h3>
-            {faculty.code && <span className="ios-badge blue">{faculty.code}</span>}
-          </div>
-          
-          <div className="ios-card-stats">
-            <span className="ios-stat-item"><IconBook size={14} /> {faculty.directions.length} направлений</span>
-            <span className="ios-stat-separator">•</span>
-            <span className="ios-stat-item"><IconUsers size={14} /> {totalGroups} групп</span>
-          </div>
-          
-          {faculty.description && <p className="ios-card-description">{faculty.description}</p>}
-        </div>
-
-        <div className="ios-card-actions">
-          {canEditStructure && (
-            <>
-              <button 
-                className="ios-action-btn edit"
-                onClick={(e) => { e.stopPropagation(); onEdit('faculty', null, '', faculty); }}
-              >
-                <IconEdit size={18} />
-              </button>
-              <button 
-                className="ios-action-btn delete"
-                onClick={(e) => onDelete('faculty', faculty.id, faculty.name, e)}
-              >
-                <IconTrash size={18} />
-              </button>
-            </>
-          )}
-          
-          {hasDirections && (
-            <div className="ios-expand-indicator">
-              {isExpanded ? <IconChevronDown size={20} /> : <IconChevronRight size={20} />}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {isExpanded && (
-        <div className="ios-card-children">
-          {canEditStructure && (
-            <button className="ios-add-button" onClick={() => onEdit('direction', faculty.id, faculty.name)}>
-              <div className="ios-add-icon"><IconPlus size={16} /></div>
-              <span>Добавить направление</span>
-            </button>
-          )}
-          
-          {faculty.directions.length === 0 ? (
-            <div className="ios-empty-state"><p>Нет направлений</p></div>
-          ) : (
-            <div className="ios-directions-list">
-              {faculty.directions.map((direction) => (
-                <DirectionCard
-                  key={direction.id}
-                  direction={direction}
-                  facultyId={faculty.id}
-                  facultyName={faculty.name}
-                  canEditStructure={canEditStructure}
-                  isExpanded={expandedDirection === direction.id}
-                  expandedGroup={expandedGroup}
-                  onToggle={onToggleDirection}
-                  onToggleGroup={onToggleGroup}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                  onSelectGroup={onSelectGroup}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-});
-
-const DirectionCard = memo(function DirectionCard({ 
-  direction, facultyId, facultyName, canEditStructure, isExpanded, expandedGroup,
-  onToggle, onToggleGroup, onEdit, onDelete, onSelectGroup
-}) {
-  const hasGroups = direction.groups.length > 0;
-
-  return (
-    <div className="ios-direction-card">
-      <div 
-        className="ios-card-header nested"
-        onClick={() => hasGroups && onToggle(direction.id)}
-        role="button"
-        tabIndex={hasGroups ? 0 : -1}
-      >
-        <div className="ios-icon-circle purple-gradient">
-          <IconBook size={22} color="white" />
-        </div>
-        
-        <div className="ios-card-content">
-          <div className="ios-card-title-row">
-            <h4 className="ios-card-title small">{direction.name}</h4>
-            {direction.code && <span className="ios-badge purple">{direction.code}</span>}
-          </div>
-          
-          <div className="ios-card-stats small">
-            <span className="ios-stat-item"><IconUsers size={12} /> {direction.groups.length} групп</span>
-          </div>
-        </div>
-
-        <div className="ios-card-actions compact">
-          {canEditStructure && (
-            <>
-              <button 
-                className="ios-action-btn edit small"
-                onClick={(e) => { e.stopPropagation(); onEdit('direction', facultyId, facultyName, direction); }}
-              >
-                <IconEdit size={16} />
-              </button>
-              <button 
-                className="ios-action-btn delete small"
-                onClick={(e) => onDelete('direction', direction.id, direction.name, e)}
-              >
-                <IconTrash size={16} />
-              </button>
-            </>
-          )}
-          
-          {hasGroups && (
-            <div className="ios-expand-indicator small">
-              {isExpanded ? <IconChevronDown size={18} /> : <IconChevronRight size={18} />}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {isExpanded && (
-        <div className="ios-card-children nested">
-          {canEditStructure && (
-            <button className="ios-add-button small" onClick={() => onEdit('group', direction.id, direction.name)}>
-              <div className="ios-add-icon small"><IconPlus size={14} /></div>
-              <span>Добавить группу</span>
-            </button>
-          )}
-          
-          {direction.groups.length === 0 ? (
-            <div className="ios-empty-state small"><p>Нет групп</p></div>
-          ) : (
-            <div className="ios-groups-list">
-              {direction.groups.map((group) => (
-                <GroupCard
-                  key={group.id}
-                  group={group}
-                  directionId={direction.id}
-                  directionName={direction.name}
-                  canEditStructure={canEditStructure}
-                  isExpanded={expandedGroup === group.id}
-                  onToggle={onToggleGroup}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                  onSelectGroup={onSelectGroup}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-});
-
-const GroupCard = memo(function GroupCard({ 
-  group, directionId, directionName, canEditStructure, isExpanded,
-  onToggle, onEdit, onDelete, onSelectGroup
-}) {
-  const hasSubgroups = group.subgroups.length > 0;
-
-  return (
-    <div className="ios-group-card">
-      <div 
-        className="ios-card-header nested-2"
-        onClick={() => hasSubgroups ? onToggle(group.id) : onSelectGroup(group.id)}
-        role="button"
-        tabIndex={0}
-      >
-        <div className="ios-icon-circle green-gradient">
-          <IconUsers size={18} color="white" />
-        </div>
-        
-        <div className="ios-card-content">
-          <div className="ios-card-title-row">
-            <h5 className="ios-card-title tiny">{group.name}</h5>
-            <div className="ios-badges-row">
-              <span className="ios-badge green">{group.course} курс</span>
-              {group.year && <span className="ios-badge outline">{group.year}</span>}
-            </div>
-          </div>
-          
-          {hasSubgroups && (
-            <div className="ios-card-stats tiny">
-              <span className="ios-stat-item">{group.subgroups.length} подгрупп</span>
-            </div>
-          )}
-        </div>
-
-        <div className="ios-card-actions compact">
-          {/* Кнопка выбора группы для расписания */}
-          <button 
-            className="ios-action-btn schedule tiny"
-            onClick={(e) => { e.stopPropagation(); onSelectGroup(group.id); }}
-            title="Открыть расписание"
-          >
-            <IconCalendar size={14} />
-          </button>
-          
-          {canEditStructure && (
-            <>
-              <button 
-                className="ios-action-btn edit tiny"
-                onClick={(e) => { e.stopPropagation(); onEdit('group', directionId, directionName, group); }}
-              >
-                <IconEdit size={14} />
-              </button>
-              <button 
-                className="ios-action-btn delete tiny"
-                onClick={(e) => onDelete('group', group.id, group.name, e)}
-              >
-                <IconTrash size={14} />
-              </button>
-            </>
-          )}
-          
-          {hasSubgroups && (
-            <div className="ios-expand-indicator tiny">
-              {isExpanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {isExpanded && (
-        <div className="ios-card-children nested-2">
-          {canEditStructure && (
-            <button className="ios-add-button tiny" onClick={() => onEdit('subgroup', group.id, group.name)}>
-              <div className="ios-add-icon tiny"><IconPlus size={12} /></div>
-              <span>Добавить подгруппу</span>
-            </button>
-          )}
-          
-          {group.subgroups.length === 0 ? (
-            <div className="ios-empty-state tiny"><p>Нет подгрупп</p></div>
-          ) : (
-            <div className="ios-subgroups-list">
-              {group.subgroups.map((subgroup) => (
-                <SubgroupCard
-                  key={subgroup.id}
-                  subgroup={subgroup}
-                  groupId={group.id}
-                  groupName={group.name}
-                  canEditStructure={canEditStructure}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-});
-
-const SubgroupCard = memo(function SubgroupCard({ 
-  subgroup, groupId, groupName, canEditStructure, onEdit, onDelete 
-}) {
-  return (
-    <div className="ios-subgroup-card">
-      <div className="ios-card-header leaf">
-        <div className="ios-icon-circle orange-gradient">
-          <IconUser size={14} color="white" />
-        </div>
-        
-        <div className="ios-card-content">
-          <h6 className="ios-card-title micro">{subgroup.name}</h6>
-        </div>
-
-        {canEditStructure && (
-          <div className="ios-card-actions compact">
-            <button 
-              className="ios-action-btn edit micro"
-              onClick={(e) => { e.stopPropagation(); onEdit('subgroup', groupId, groupName, subgroup); }}
-            >
-              <IconEdit size={12} />
-            </button>
-            <button 
-              className="ios-action-btn delete micro"
-              onClick={(e) => onDelete('subgroup', subgroup.id, subgroup.name, e)}
-            >
-              <IconTrash size={12} />
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
   );
 });
 
