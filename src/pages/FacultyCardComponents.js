@@ -6,7 +6,7 @@ import React, { memo } from 'react';
 import { 
   IconBuilding, IconBook, IconUsers, IconUser, 
   IconEdit, IconTrash, IconPlus, IconChevronDown, IconChevronRight 
-} from './Icons';
+} from '../components/Icons';
 
 // ========== FACULTY CARD ==========
 export const FacultyCard = memo(function FacultyCard({ 
