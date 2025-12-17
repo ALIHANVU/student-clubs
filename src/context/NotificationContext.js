@@ -15,17 +15,16 @@ export function NotificationProvider({ children }) {
 
   const addNotification = useCallback((notification) => {
     const id = Date.now();
-    const newNotification = { id, type: 'info', duration: 3000, ...notification };
+    const newNotif = { id, type: 'info', duration: 3000, ...notification };
 
-    if (newNotification.type === 'success') haptic.success();
-    else if (newNotification.type === 'error') haptic.error();
+    if (newNotif.type === 'success') haptic.success();
+    else if (newNotif.type === 'error') haptic.error();
 
-    setNotifications(prev => [...prev, newNotification]);
+    setNotifications(prev => [...prev.slice(-4), newNotif]); // Максимум 5 уведомлений
 
-    if (newNotification.duration > 0) {
-      setTimeout(() => removeNotification(id), newNotification.duration);
+    if (newNotif.duration > 0) {
+      setTimeout(() => removeNotification(id), newNotif.duration);
     }
-
     return id;
   }, [removeNotification]);
 
@@ -35,12 +34,14 @@ export function NotificationProvider({ children }) {
     info: (message, title) => addNotification({ type: 'info', message, title }),
   }), [addNotification]);
 
-  const value = useMemo(() => ({ notifications, notify, removeNotification }), [notifications, notify, removeNotification]);
+  const value = useMemo(() => ({ notify }), [notify]);
 
   return (
     <NotificationContext.Provider value={value}>
       {children}
-      <NotificationContainer notifications={notifications} onRemove={removeNotification} />
+      {notifications.length > 0 && (
+        <NotificationContainer notifications={notifications} onRemove={removeNotification} />
+      )}
     </NotificationContext.Provider>
   );
 }
@@ -51,25 +52,25 @@ export function useNotification() {
   return context;
 }
 
-// Мемоизированный контейнер
 const NotificationContainer = memo(function NotificationContainer({ notifications, onRemove }) {
-  if (notifications.length === 0) return null;
-
   return (
     <div className="notification-container">
-      {notifications.map((n) => (
+      {notifications.map(n => (
         <NotificationItem key={n.id} notification={n} onRemove={onRemove} />
       ))}
     </div>
   );
 });
 
-const icons = { success: '✓', error: '✕', info: 'ℹ' };
+const ICONS = { success: '✓', error: '✕', info: 'ℹ' };
 
 const NotificationItem = memo(function NotificationItem({ notification, onRemove }) {
   return (
-    <div className={`notification notification-${notification.type}`} onClick={() => onRemove(notification.id)}>
-      <div className="notification-icon">{icons[notification.type]}</div>
+    <div 
+      className={`notification notification-${notification.type}`} 
+      onClick={() => onRemove(notification.id)}
+    >
+      <div className="notification-icon">{ICONS[notification.type]}</div>
       <div className="notification-content">
         {notification.title && <div className="notification-title">{notification.title}</div>}
         <div className="notification-message">{notification.message}</div>
