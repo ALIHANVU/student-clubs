@@ -1,61 +1,59 @@
 /**
- * Hooks — Оптимизированные
+ * Hooks — Супер-оптимизированные
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { cachedQuery, invalidateCache } from '../utils/supabase';
 import { STORAGE_KEY } from '../utils/constants';
 
-// Auth hook с оптимизацией
+// Auth hook — минимальный
 export function useAuth() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [state, setState] = useState({ user: null, loading: true });
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) setUser(JSON.parse(saved));
-    } catch (e) {
+      if (saved) setState({ user: JSON.parse(saved), loading: false });
+      else setState(s => ({ ...s, loading: false }));
+    } catch {
       localStorage.removeItem(STORAGE_KEY);
+      setState(s => ({ ...s, loading: false }));
     }
-    setLoading(false);
   }, []);
 
   const login = useCallback((userData) => {
-    setUser(userData);
+    setState({ user: userData, loading: false });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
   }, []);
 
   const logout = useCallback(() => {
-    setUser(null);
+    setState({ user: null, loading: false });
     localStorage.removeItem(STORAGE_KEY);
-    invalidateCache(); // Очищаем кэш при выходе
+    invalidateCache();
   }, []);
 
   const updateUser = useCallback((updates) => {
-    setUser(prev => {
-      const updated = { ...prev, ...updates };
+    setState(prev => {
+      const updated = { ...prev.user, ...updates };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      return updated;
+      return { ...prev, user: updated };
     });
   }, []);
 
-  return { user, loading, login, logout, updateUser };
+  return { ...state, login, logout, updateUser };
 }
 
-// Online status с throttling
+// Online status — с throttling
 export function useOnlineStatus() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline, { passive: true });
-    window.addEventListener('offline', handleOffline, { passive: true });
-
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener('online', on, { passive: true });
+    window.addEventListener('offline', off, { passive: true });
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
     };
   }, []);
 
@@ -63,28 +61,27 @@ export function useOnlineStatus() {
 }
 
 // Modal hook
-export function useModal(initialState = false) {
-  const [isOpen, setIsOpen] = useState(initialState);
-  
-  const open = useCallback(() => setIsOpen(true), []);
-  const close = useCallback(() => setIsOpen(false), []);
-  const toggle = useCallback(() => setIsOpen(prev => !prev), []);
-
-  return { isOpen, open, close, toggle };
+export function useModal(initial = false) {
+  const [isOpen, setIsOpen] = useState(initial);
+  return useMemo(() => ({
+    isOpen,
+    open: () => setIsOpen(true),
+    close: () => setIsOpen(false),
+    toggle: () => setIsOpen(p => !p)
+  }), [isOpen]);
 }
 
-// Media query hook с debounce
+// Mobile detection — с debounce
 export function useIsMobile() {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
   const timeoutRef = useRef(null);
 
   useEffect(() => {
     const handleResize = () => {
-      // Debounce resize
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => {
         setIsMobile(window.innerWidth <= 768);
-      }, 100);
+      }, 150);
     };
 
     window.addEventListener('resize', handleResize, { passive: true });
@@ -97,39 +94,23 @@ export function useIsMobile() {
   return isMobile;
 }
 
-// Data fetching hook с кэшированием
+// Data fetching — оптимизированный
 export function useData(key, fetchFn, deps = []) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [state, setState] = useState({ data: null, loading: true, error: null });
   const mountedRef = useRef(true);
-  const fetchFnRef = useRef(fetchFn);
+  const fetchRef = useRef(fetchFn);
   
-  // Обновляем ref при изменении fetchFn
-  useEffect(() => {
-    fetchFnRef.current = fetchFn;
-  }, [fetchFn]);
+  useEffect(() => { fetchRef.current = fetchFn; }, [fetchFn]);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    
+    setState(s => ({ ...s, loading: true, error: null }));
     try {
-      const result = await cachedQuery(key, fetchFnRef.current);
-      if (mountedRef.current) {
-        setData(result);
-      }
+      const result = await cachedQuery(key, fetchRef.current);
+      if (mountedRef.current) setState({ data: result, loading: false, error: null });
     } catch (err) {
-      if (mountedRef.current) {
-        setError(err);
-      }
-    } finally {
-      if (mountedRef.current) {
-        setLoading(false);
-      }
+      if (mountedRef.current) setState({ data: null, loading: false, error: err });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, ...deps]);
+  }, [key]);
 
   const refresh = useCallback(async () => {
     invalidateCache(key);
@@ -140,29 +121,36 @@ export function useData(key, fetchFn, deps = []) {
     mountedRef.current = true;
     load();
     return () => { mountedRef.current = false; };
-  }, [load]);
+    // eslint-disable-next-line
+  }, [key, ...deps]);
 
-  return { data, loading, error, refresh };
+  return { ...state, refresh };
 }
 
-// Intersection observer hook для lazy loading
+// Intersection observer — для lazy loading
 export function useInView(options = {}) {
   const [isInView, setIsInView] = useState(false);
   const ref = useRef(null);
-  const optionsRef = useRef(options);
 
   useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
+    const el = ref.current;
+    if (!el) return;
 
     const observer = new IntersectionObserver(
       ([entry]) => setIsInView(entry.isIntersecting),
-      { threshold: 0.1, ...optionsRef.current }
+      { threshold: 0.1, ...options }
     );
 
-    observer.observe(element);
+    observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [options]);
 
   return [ref, isInView];
+}
+
+// Stable callback — не меняется между рендерами
+export function useStableCallback(callback) {
+  const ref = useRef(callback);
+  useEffect(() => { ref.current = callback; });
+  return useCallback((...args) => ref.current(...args), []);
 }
