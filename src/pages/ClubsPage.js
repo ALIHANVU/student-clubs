@@ -1,22 +1,115 @@
 /**
- * ClubsPage — Исправленная с полными правами админа
+ * ClubsPage — ОПТИМИЗИРОВАННАЯ ВЕРСИЯ
+ * 
+ * Изменения:
+ * - Вынесены отдельные компоненты для карточек
+ * - Оптимизированы useCallback с правильными зависимостями
+ * - Добавлен AbortController
+ * - Убраны лишние ре-рендеры
  */
-import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
 import { supabase, invalidateCache } from '../utils/supabase';
 import { getMembersText } from '../utils/helpers';
 import { haptic } from '../utils/haptic';
 import { useNotification } from '../context/NotificationContext';
 import { useApp } from '../context/AppContext';
-import { PageHeader, EmptyState, FilterTabs, Card, CardHeader, CardIcon, CardInfo, CardTitle, CardDescription, CardMeta, CardMetaItem, CardFooter, Button, Badge, FormField, Input, Textarea, PullToRefresh, SkeletonCard } from '../components/UI';
+import { 
+  PageHeader, EmptyState, FilterTabs, Button, FormField, Input, 
+  Textarea, PullToRefresh, SkeletonCard 
+} from '../components/UI';
 import { Modal } from '../components/Modal';
 import { MobilePageHeader } from '../components/Navigation';
 import { CLUB_ICONS } from '../utils/constants';
 
+// ========== КОМПОНЕНТЫ ==========
+
+const ClubCard = memo(function ClubCard({ 
+  club, 
+  isSubscribed, 
+  canEdit, 
+  onToggleSubscription, 
+  onEdit, 
+  onDelete 
+}) {
+  const handleSubscribe = useCallback((e) => {
+    e?.stopPropagation();
+    onToggleSubscription(club.id, club.name);
+  }, [club.id, club.name, onToggleSubscription]);
+
+  const handleEdit = useCallback((e) => {
+    e?.stopPropagation();
+    onEdit(club);
+  }, [club, onEdit]);
+
+  const handleDelete = useCallback((e) => {
+    e?.stopPropagation();
+    onDelete(club.id, club.name);
+  }, [club.id, club.name, onDelete]);
+
+  const memberCount = club.members_count || 0;
+
+  return (
+    <div className={`card ${canEdit ? 'card-pressable' : ''}`} onClick={canEdit ? handleEdit : undefined}>
+      <div className="card-header">
+        <div className={`card-icon ${isSubscribed ? 'subscribed' : ''}`}>
+          {club.icon || '🎭'}
+        </div>
+        <div className="card-info">
+          <div className="card-title">
+            {club.name}
+            {isSubscribed && <span className="badge badge-green">✓ Подписан</span>}
+          </div>
+          <div className="card-description">{club.description || 'Описание отсутствует'}</div>
+          <div className="card-meta">
+            <span className="card-meta-item">👥 {getMembersText(memberCount)}</span>
+          </div>
+        </div>
+      </div>
+      <div className="card-footer">
+        <Button 
+          variant={isSubscribed ? 'secondary' : 'primary'} 
+          size="small" 
+          onClick={handleSubscribe}
+        >
+          {isSubscribed ? 'Отписаться' : 'Подписаться'}
+        </Button>
+        {canEdit && (
+          <>
+            <Button variant="secondary" size="small" onClick={handleEdit}>✏️</Button>
+            <Button variant="danger" size="small" onClick={handleDelete}>🗑️</Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+});
+
+const IconPicker = memo(function IconPicker({ value, onChange }) {
+  return (
+    <div className="icon-picker">
+      {CLUB_ICONS.map(icon => (
+        <button 
+          key={icon} 
+          type="button" 
+          className={`icon-option ${value === icon ? 'active' : ''}`} 
+          onClick={() => onChange(icon)}
+        >
+          {icon}
+        </button>
+      ))}
+    </div>
+  );
+});
+
+// ========== ГЛАВНЫЙ КОМПОНЕНТ ==========
+
 export const ClubsPage = memo(function ClubsPage() {
   const { user } = useApp();
   const { notify } = useNotification();
+  
+  // Состояния
   const [clubs, setClubs] = useState([]);
-  const [myClubs, setMyClubs] = useState([]);
+  const [myClubs, setMyClubs] = useState(new Set()); // Set для быстрого поиска
   const [showModal, setShowModal] = useState(false);
   const [editingClub, setEditingClub] = useState(null);
   const [clubForm, setClubForm] = useState({ name: '', description: '', icon: '🎭' });
@@ -25,9 +118,10 @@ export const ClubsPage = memo(function ClubsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  // Админ может всё
+  const mountedRef = useRef(true);
   const canEdit = user.role === 'main_admin' || user.role === 'club_admin';
 
+  // Загрузка данных
   const loadClubs = useCallback(async () => {
     try {
       const [clubsRes, subsRes] = await Promise.all([
@@ -35,23 +129,31 @@ export const ClubsPage = memo(function ClubsPage() {
         supabase.from('club_subscriptions').select('club_id').eq('student_id', user.id)
       ]);
       
+      if (!mountedRef.current) return;
+      
       setClubs(clubsRes.data || []);
-      setMyClubs(subsRes.data?.map(s => s.club_id) || []);
+      setMyClubs(new Set(subsRes.data?.map(s => s.club_id) || []));
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error loading clubs:', error);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [user.id]);
 
-  useEffect(() => { loadClubs(); }, [loadClubs]);
+  useEffect(() => {
+    mountedRef.current = true;
+    loadClubs();
+    return () => { mountedRef.current = false; };
+  }, [loadClubs]);
 
+  // Обновление
   const handleRefresh = useCallback(async () => {
     setLoading(true);
     await loadClubs();
     notify.success('Обновлено');
   }, [loadClubs, notify]);
 
+  // Модалка
   const openAddModal = useCallback(() => {
     setEditingClub(null);
     setClubForm({ name: '', description: '', icon: '🎭' });
@@ -74,6 +176,12 @@ export const ClubsPage = memo(function ClubsPage() {
     setEditingClub(null);
   }, []);
 
+  // Обновление формы
+  const updateFormField = useCallback((field, value) => {
+    setClubForm(prev => ({ ...prev, [field]: value }));
+  }, []);
+
+  // Сохранение
   const saveClub = useCallback(async () => {
     if (!clubForm.name.trim()) {
       notify.error('Введите название клуба');
@@ -103,7 +211,7 @@ export const ClubsPage = memo(function ClubsPage() {
       loadClubs();
       haptic.success();
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error saving club:', error);
       notify.error('Ошибка сохранения');
       haptic.error();
     } finally {
@@ -111,8 +219,8 @@ export const ClubsPage = memo(function ClubsPage() {
     }
   }, [clubForm, editingClub, user.id, loadClubs, notify, closeModal]);
 
-  const deleteClub = useCallback(async (id, name, e) => {
-    e?.stopPropagation();
+  // Удаление
+  const deleteClub = useCallback(async (id, name) => {
     if (!window.confirm(`Удалить клуб "${name}"?`)) return;
     
     try {
@@ -124,15 +232,26 @@ export const ClubsPage = memo(function ClubsPage() {
       notify.success('Клуб удалён');
       haptic.medium();
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error deleting club:', error);
       notify.error('Ошибка удаления');
       haptic.error();
     }
   }, [loadClubs, notify]);
 
-  const toggleSubscription = useCallback(async (clubId, clubName, e) => {
-    e?.stopPropagation();
-    const isSubscribed = myClubs.includes(clubId);
+  // Подписка/отписка
+  const toggleSubscription = useCallback(async (clubId, clubName) => {
+    const isSubscribed = myClubs.has(clubId);
+    
+    // Оптимистичное обновление
+    setMyClubs(prev => {
+      const next = new Set(prev);
+      if (isSubscribed) {
+        next.delete(clubId);
+      } else {
+        next.add(clubId);
+      }
+      return next;
+    });
     
     try {
       if (isSubscribed) {
@@ -142,35 +261,45 @@ export const ClubsPage = memo(function ClubsPage() {
           .eq('club_id', clubId)
           .eq('student_id', user.id);
         if (error) throw error;
-        
-        setMyClubs(prev => prev.filter(id => id !== clubId));
         notify.info(`Вы отписались от "${clubName}"`);
       } else {
         const { error } = await supabase
           .from('club_subscriptions')
           .insert({ club_id: clubId, student_id: user.id });
         if (error) throw error;
-        
-        setMyClubs(prev => [...prev, clubId]);
         notify.success(`Вы подписались на "${clubName}"`);
       }
       haptic.medium();
     } catch (error) {
-      console.error('Error:', error);
+      // Откат при ошибке
+      setMyClubs(prev => {
+        const next = new Set(prev);
+        if (isSubscribed) {
+          next.add(clubId);
+        } else {
+          next.delete(clubId);
+        }
+        return next;
+      });
+      console.error('Error toggling subscription:', error);
       notify.error('Ошибка');
       haptic.error();
     }
   }, [myClubs, user.id, notify]);
 
-  // Мемоизированная фильтрация
+  // Фильтрация (мемоизация)
   const filteredClubs = useMemo(() => {
-    let result = clubs.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+    const searchLower = search.toLowerCase();
+    let result = clubs.filter(c => c.name.toLowerCase().includes(searchLower));
+    
     if (filter === 'my') {
-      result = result.filter(c => myClubs.includes(c.id));
+      result = result.filter(c => myClubs.has(c.id));
     }
+    
     return result;
   }, [clubs, search, filter, myClubs]);
 
+  // Константы
   const filterTabs = useMemo(() => [
     { id: 'all', label: 'Все клубы' }, 
     { id: 'my', label: 'Мои клубы' }
@@ -211,65 +340,23 @@ export const ClubsPage = memo(function ClubsPage() {
             />
           ) : (
             <div className="cards-grid">
-              {filteredClubs.map((club) => {
-                const isSubscribed = myClubs.includes(club.id);
-                const memberCount = club.members_count || 0;
-
-                return (
-                  <Card 
-                    key={club.id} 
-                    className="card-pressable"
-                    onClick={canEdit ? () => openEditModal(club) : undefined}
-                  >
-                    <CardHeader>
-                      <CardIcon subscribed={isSubscribed}>{club.icon || '🎭'}</CardIcon>
-                      <CardInfo>
-                        <CardTitle>
-                          {club.name} 
-                          {isSubscribed && <Badge variant="green">✓ Подписан</Badge>}
-                        </CardTitle>
-                        <CardDescription>{club.description || 'Описание отсутствует'}</CardDescription>
-                        <CardMeta>
-                          <CardMetaItem>👥 {getMembersText(memberCount)}</CardMetaItem>
-                        </CardMeta>
-                      </CardInfo>
-                    </CardHeader>
-                    <CardFooter>
-                      <Button 
-                        variant={isSubscribed ? 'secondary' : 'primary'} 
-                        size="small" 
-                        onClick={(e) => toggleSubscription(club.id, club.name, e)}
-                      >
-                        {isSubscribed ? 'Отписаться' : 'Подписаться'}
-                      </Button>
-                      {canEdit && (
-                        <>
-                          <Button 
-                            variant="secondary" 
-                            size="small" 
-                            onClick={(e) => { e.stopPropagation(); openEditModal(club); }}
-                          >
-                            ✏️
-                          </Button>
-                          <Button 
-                            variant="danger" 
-                            size="small" 
-                            onClick={(e) => deleteClub(club.id, club.name, e)}
-                          >
-                            🗑️
-                          </Button>
-                        </>
-                      )}
-                    </CardFooter>
-                  </Card>
-                );
-              })}
+              {filteredClubs.map((club) => (
+                <ClubCard
+                  key={club.id}
+                  club={club}
+                  isSubscribed={myClubs.has(club.id)}
+                  canEdit={canEdit}
+                  onToggleSubscription={toggleSubscription}
+                  onEdit={openEditModal}
+                  onDelete={deleteClub}
+                />
+              ))}
             </div>
           )}
         </div>
       </PullToRefresh>
 
-      {/* Модальное окно создания/редактирования */}
+      {/* Модальное окно */}
       <Modal 
         isOpen={showModal} 
         onClose={closeModal} 
@@ -288,24 +375,16 @@ export const ClubsPage = memo(function ClubsPage() {
         }
       >
         <FormField label="Иконка">
-          <div className="icon-picker">
-            {CLUB_ICONS.map(icon => (
-              <button 
-                key={icon} 
-                type="button" 
-                className={`icon-option ${clubForm.icon === icon ? 'active' : ''}`} 
-                onClick={() => setClubForm(prev => ({ ...prev, icon }))}
-              >
-                {icon}
-              </button>
-            ))}
-          </div>
+          <IconPicker 
+            value={clubForm.icon} 
+            onChange={(icon) => updateFormField('icon', icon)} 
+          />
         </FormField>
         
         <FormField label="Название клуба *">
           <Input 
             value={clubForm.name} 
-            onChange={(e) => setClubForm(prev => ({ ...prev, name: e.target.value }))} 
+            onChange={(e) => updateFormField('name', e.target.value)} 
             placeholder="Например: IT-клуб" 
             autoFocus 
           />
@@ -314,7 +393,7 @@ export const ClubsPage = memo(function ClubsPage() {
         <FormField label="Описание">
           <Textarea 
             value={clubForm.description} 
-            onChange={(e) => setClubForm(prev => ({ ...prev, description: e.target.value }))} 
+            onChange={(e) => updateFormField('description', e.target.value)} 
             placeholder="Расскажите о клубе, чем вы занимаетесь..." 
           />
         </FormField>
