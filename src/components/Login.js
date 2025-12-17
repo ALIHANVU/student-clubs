@@ -1,23 +1,24 @@
 /**
- * Login Page
+ * Login — Оптимизированный
  */
 import React, { useState, useCallback, memo } from 'react';
 import { supabase } from '../utils/supabase';
 import { haptic } from '../utils/haptic';
-import { IconGraduationCap, IconMail, IconLock, IconLogIn, IconUser } from './Icons';
+import { IconGraduationCap, IconMail, IconLock, IconUser } from './Icons';
 
 export const LoginPage = memo(function LoginPage({ onLogin }) {
   const [isRegister, setIsRegister] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [fullName, setFullName] = useState('');
+  const [form, setForm] = useState({ email: '', password: '', confirmPassword: '', fullName: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const updateForm = useCallback((field, value) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+  }, []);
+
   const handleLogin = useCallback(async (e) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) { setError('Заполните все поля'); haptic.error(); return; }
+    if (!form.email.trim() || !form.password.trim()) { setError('Заполните все поля'); haptic.error(); return; }
 
     setLoading(true);
     setError('');
@@ -26,13 +27,13 @@ export const LoginPage = memo(function LoginPage({ onLogin }) {
       const { data: user, error: fetchError } = await supabase
         .from('users')
         .select('*')
-        .eq('email', email.toLowerCase().trim())
+        .eq('email', form.email.toLowerCase().trim())
         .single();
 
       if (fetchError || !user) throw new Error('Пользователь не найден');
 
-      const passwordHash = btoa(password);
-      if (user.password_hash !== passwordHash && user.password !== password) throw new Error('Неверный пароль');
+      const passwordHash = btoa(form.password);
+      if (user.password_hash !== passwordHash && user.password !== form.password) throw new Error('Неверный пароль');
 
       onLogin(user);
       haptic.success();
@@ -42,25 +43,24 @@ export const LoginPage = memo(function LoginPage({ onLogin }) {
     } finally {
       setLoading(false);
     }
-  }, [email, password, onLogin]);
+  }, [form.email, form.password, onLogin]);
 
   const handleRegister = useCallback(async (e) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim() || !fullName.trim()) { setError('Заполните все поля'); haptic.error(); return; }
-    if (password.length < 6) { setError('Пароль минимум 6 символов'); haptic.error(); return; }
-    if (password !== confirmPassword) { setError('Пароли не совпадают'); haptic.error(); return; }
+    if (!form.email.trim() || !form.password.trim() || !form.fullName.trim()) { setError('Заполните все поля'); haptic.error(); return; }
+    if (form.password.length < 6) { setError('Пароль минимум 6 символов'); haptic.error(); return; }
+    if (form.password !== form.confirmPassword) { setError('Пароли не совпадают'); haptic.error(); return; }
 
     setLoading(true);
     setError('');
 
     try {
-      const { data: existing } = await supabase.from('users').select('id').eq('email', email.toLowerCase().trim()).single();
+      const { data: existing } = await supabase.from('users').select('id').eq('email', form.email.toLowerCase().trim()).single();
       if (existing) throw new Error('Email уже занят');
 
-      const passwordHash = btoa(password);
       const { data: newUser, error: insertError } = await supabase
         .from('users')
-        .insert({ email: email.toLowerCase().trim(), password_hash: passwordHash, full_name: fullName.trim(), role: 'student' })
+        .insert({ email: form.email.toLowerCase().trim(), password_hash: btoa(form.password), full_name: form.fullName.trim(), role: 'student' })
         .select()
         .single();
 
@@ -74,7 +74,11 @@ export const LoginPage = memo(function LoginPage({ onLogin }) {
     } finally {
       setLoading(false);
     }
-  }, [email, password, confirmPassword, fullName, onLogin]);
+  }, [form, onLogin]);
+
+  const setDemo = useCallback((email, password) => {
+    setForm(prev => ({ ...prev, email, password }));
+  }, []);
 
   return (
     <div className="login-page">
@@ -93,7 +97,7 @@ export const LoginPage = memo(function LoginPage({ onLogin }) {
               <label className="form-label">Имя и фамилия *</label>
               <div className="input-with-icon">
                 <IconUser size={20} color="var(--text-tertiary)" />
-                <input type="text" className="input input-icon" placeholder="Иван Иванов" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+                <input type="text" className="input input-icon" placeholder="Иван Иванов" value={form.fullName} onChange={(e) => updateForm('fullName', e.target.value)} />
               </div>
             </div>
           )}
@@ -102,7 +106,7 @@ export const LoginPage = memo(function LoginPage({ onLogin }) {
             <label className="form-label">Email *</label>
             <div className="input-with-icon">
               <IconMail size={20} color="var(--text-tertiary)" />
-              <input type="email" className="input input-icon" placeholder="email@example.com" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus={!isRegister} />
+              <input type="email" className="input input-icon" placeholder="email@example.com" value={form.email} onChange={(e) => updateForm('email', e.target.value)} autoFocus={!isRegister} />
             </div>
           </div>
 
@@ -110,7 +114,7 @@ export const LoginPage = memo(function LoginPage({ onLogin }) {
             <label className="form-label">Пароль *</label>
             <div className="input-with-icon">
               <IconLock size={20} color="var(--text-tertiary)" />
-              <input type="password" className="input input-icon" placeholder={isRegister ? 'Минимум 6 символов' : '••••••••'} value={password} onChange={(e) => setPassword(e.target.value)} />
+              <input type="password" className="input input-icon" placeholder={isRegister ? 'Минимум 6 символов' : '••••••••'} value={form.password} onChange={(e) => updateForm('password', e.target.value)} />
             </div>
           </div>
 
@@ -119,13 +123,13 @@ export const LoginPage = memo(function LoginPage({ onLogin }) {
               <label className="form-label">Подтвердите пароль *</label>
               <div className="input-with-icon">
                 <IconLock size={20} color="var(--text-tertiary)" />
-                <input type="password" className="input input-icon" placeholder="Повторите пароль" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                <input type="password" className="input input-icon" placeholder="Повторите пароль" value={form.confirmPassword} onChange={(e) => updateForm('confirmPassword', e.target.value)} />
               </div>
             </div>
           )}
 
           <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
-            {loading ? <span className="spinner" style={{ width: 20, height: 20 }} /> : <><IconLogIn size={20} />{isRegister ? 'Зарегистрироваться' : 'Войти'}</>}
+            {loading ? <span className="spinner" style={{ width: 20, height: 20 }} /> : (isRegister ? 'Зарегистрироваться' : 'Войти')}
           </button>
         </form>
 
@@ -141,8 +145,8 @@ export const LoginPage = memo(function LoginPage({ onLogin }) {
           <div className="login-demo">
             <p>Демо аккаунты:</p>
             <div className="demo-accounts">
-              <button type="button" className="demo-btn" onClick={() => { setEmail('admin@uniclub.ru'); setPassword('admin123'); }}>👑 Админ</button>
-              <button type="button" className="demo-btn" onClick={() => { setEmail('student@uniclub.ru'); setPassword('student123'); }}>🎓 Студент</button>
+              <button type="button" className="demo-btn" onClick={() => setDemo('admin@uniclub.ru', 'admin123')}>👑 Админ</button>
+              <button type="button" className="demo-btn" onClick={() => setDemo('student@uniclub.ru', 'student123')}>🎓 Студент</button>
             </div>
           </div>
         )}
