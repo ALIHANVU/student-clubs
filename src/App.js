@@ -1,5 +1,5 @@
 /**
- * App.js — Обновлённый (с FacultiesPage)
+ * App.js — Обновлённый (без отдельной FacultiesPage)
  */
 import React, { Suspense, lazy, memo } from 'react';
 import { useAuth, useOnlineStatus, useIsMobile } from './hooks';
@@ -15,7 +15,6 @@ const StudentDashboard = lazy(() => import('./pages/Dashboard').then(m => ({ def
 const ClubsPage = lazy(() => import('./pages/ClubsPage'));
 const EventsPage = lazy(() => import('./pages/EventsPage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
-const FacultiesPage = lazy(() => import('./pages/FacultiesPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 
@@ -83,8 +82,6 @@ const PageRouter = memo(function PageRouter() {
         return <EventsPage />;
       case 'schedule':
         return <SchedulePage />;
-      case 'faculties':
-        return <FacultiesPage />;
       case 'users':
         return <UsersPage />;
       case 'profile':
