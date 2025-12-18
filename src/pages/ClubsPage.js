@@ -1,11 +1,11 @@
 /**
- * ClubsPage — ОПТИМИЗИРОВАННАЯ ВЕРСИЯ
+ * ClubsPage — СУПЕР-ОПТИМИЗИРОВАННАЯ ВЕРСИЯ
  * 
- * Изменения:
- * - Вынесены отдельные компоненты для карточек
- * - Оптимизированы useCallback с правильными зависимостями
- * - Добавлен AbortController
- * - Убраны лишние ре-рендеры
+ * Исправлены проблемы:
+ * 1. Карточки мемоизированы с кастомным comparator
+ * 2. Подписки хранятся в Set для O(1) поиска
+ * 3. Оптимистичные обновления для мгновенного отклика
+ * 4. Убраны лишние ре-рендеры через правильные зависимости
  */
 import React, { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
 import { supabase, invalidateCache } from '../utils/supabase';
@@ -21,8 +21,9 @@ import { Modal } from '../components/Modal';
 import { MobilePageHeader } from '../components/Navigation';
 import { CLUB_ICONS } from '../utils/constants';
 
-// ========== КОМПОНЕНТЫ ==========
+// ========== ОПТИМИЗИРОВАННЫЕ КОМПОНЕНТЫ ==========
 
+// Карточка клуба с кастомным comparator
 const ClubCard = memo(function ClubCard({ 
   club, 
   isSubscribed, 
@@ -31,6 +32,7 @@ const ClubCard = memo(function ClubCard({
   onEdit, 
   onDelete 
 }) {
+  // Мемоизируем обработчики
   const handleSubscribe = useCallback((e) => {
     e?.stopPropagation();
     onToggleSubscription(club.id, club.name);
@@ -49,7 +51,10 @@ const ClubCard = memo(function ClubCard({
   const memberCount = club.members_count || 0;
 
   return (
-    <div className={`card ${canEdit ? 'card-pressable' : ''}`} onClick={canEdit ? handleEdit : undefined}>
+    <div 
+      className={`card ${canEdit ? 'card-pressable' : ''}`} 
+      onClick={canEdit ? handleEdit : undefined}
+    >
       <div className="card-header">
         <div className={`card-icon ${isSubscribed ? 'subscribed' : ''}`}>
           {club.icon || '🎭'}
@@ -59,7 +64,9 @@ const ClubCard = memo(function ClubCard({
             {club.name}
             {isSubscribed && <span className="badge badge-green">✓ Подписан</span>}
           </div>
-          <div className="card-description">{club.description || 'Описание отсутствует'}</div>
+          <div className="card-description">
+            {club.description || 'Описание отсутствует'}
+          </div>
           <div className="card-meta">
             <span className="card-meta-item">👥 {getMembersText(memberCount)}</span>
           </div>
@@ -82,9 +89,24 @@ const ClubCard = memo(function ClubCard({
       </div>
     </div>
   );
+}, (prev, next) => {
+  // Кастомный comparator — перерендерим только если что-то реально изменилось
+  return prev.club.id === next.club.id &&
+         prev.club.name === next.club.name &&
+         prev.club.description === next.club.description &&
+         prev.club.icon === next.club.icon &&
+         prev.club.members_count === next.club.members_count &&
+         prev.isSubscribed === next.isSubscribed &&
+         prev.canEdit === next.canEdit;
 });
 
+// Пикер иконок
 const IconPicker = memo(function IconPicker({ value, onChange }) {
+  const handleSelect = useCallback((icon) => {
+    haptic.light();
+    onChange(icon);
+  }, [onChange]);
+
   return (
     <div className="icon-picker">
       {CLUB_ICONS.map(icon => (
@@ -92,7 +114,7 @@ const IconPicker = memo(function IconPicker({ value, onChange }) {
           key={icon} 
           type="button" 
           className={`icon-option ${value === icon ? 'active' : ''}`} 
-          onClick={() => onChange(icon)}
+          onClick={() => handleSelect(icon)}
         >
           {icon}
         </button>
@@ -109,7 +131,7 @@ export const ClubsPage = memo(function ClubsPage() {
   
   // Состояния
   const [clubs, setClubs] = useState([]);
-  const [myClubs, setMyClubs] = useState(new Set()); // Set для быстрого поиска
+  const [myClubs, setMyClubs] = useState(() => new Set()); // Set для O(1) поиска
   const [showModal, setShowModal] = useState(false);
   const [editingClub, setEditingClub] = useState(null);
   const [clubForm, setClubForm] = useState({ name: '', description: '', icon: '🎭' });
@@ -238,11 +260,11 @@ export const ClubsPage = memo(function ClubsPage() {
     }
   }, [loadClubs, notify]);
 
-  // Подписка/отписка
+  // ОПТИМИЗИРОВАННАЯ подписка/отписка с оптимистичным обновлением
   const toggleSubscription = useCallback(async (clubId, clubName) => {
     const isSubscribed = myClubs.has(clubId);
     
-    // Оптимистичное обновление
+    // Оптимистичное обновление — UI обновляется мгновенно
     setMyClubs(prev => {
       const next = new Set(prev);
       if (isSubscribed) {
@@ -252,6 +274,19 @@ export const ClubsPage = memo(function ClubsPage() {
       }
       return next;
     });
+    
+    // Оптимистичное обновление счётчика
+    setClubs(prev => prev.map(club => {
+      if (club.id === clubId) {
+        return {
+          ...club,
+          members_count: Math.max(0, (club.members_count || 0) + (isSubscribed ? -1 : 1))
+        };
+      }
+      return club;
+    }));
+    
+    haptic.medium();
     
     try {
       if (isSubscribed) {
@@ -269,7 +304,6 @@ export const ClubsPage = memo(function ClubsPage() {
         if (error) throw error;
         notify.success(`Вы подписались на "${clubName}"`);
       }
-      haptic.medium();
     } catch (error) {
       // Откат при ошибке
       setMyClubs(prev => {
@@ -281,17 +315,34 @@ export const ClubsPage = memo(function ClubsPage() {
         }
         return next;
       });
+      
+      setClubs(prev => prev.map(club => {
+        if (club.id === clubId) {
+          return {
+            ...club,
+            members_count: Math.max(0, (club.members_count || 0) + (isSubscribed ? 1 : -1))
+          };
+        }
+        return club;
+      }));
+      
       console.error('Error toggling subscription:', error);
       notify.error('Ошибка');
       haptic.error();
     }
   }, [myClubs, user.id, notify]);
 
-  // Фильтрация (мемоизация)
+  // МЕМОИЗИРОВАННАЯ фильтрация
   const filteredClubs = useMemo(() => {
     const searchLower = search.toLowerCase();
-    let result = clubs.filter(c => c.name.toLowerCase().includes(searchLower));
+    let result = clubs;
     
+    // Фильтр по поиску
+    if (search) {
+      result = result.filter(c => c.name.toLowerCase().includes(searchLower));
+    }
+    
+    // Фильтр "мои клубы"
     if (filter === 'my') {
       result = result.filter(c => myClubs.has(c.id));
     }
@@ -327,13 +378,16 @@ export const ClubsPage = memo(function ClubsPage() {
 
           {loading ? (
             <div className="cards-grid">
-              {[1,2,3].map(i => <SkeletonCard key={i} />)}
+              {[1, 2, 3].map(i => <SkeletonCard key={i} />)}
             </div>
           ) : filteredClubs.length === 0 ? (
             <EmptyState 
               icon="🎭" 
               title="Нет клубов" 
-              text={filter === 'my' ? 'Вы ещё не подписаны на клубы' : (search ? 'Ничего не найдено' : 'Создайте первый клуб')} 
+              text={filter === 'my' 
+                ? 'Вы ещё не подписаны на клубы' 
+                : (search ? 'Ничего не найдено' : 'Создайте первый клуб')
+              } 
               action={canEdit && filter !== 'my' && !search && (
                 <Button variant="primary" onClick={openAddModal}>+ Создать клуб</Button>
               )}
