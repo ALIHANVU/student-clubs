@@ -642,3 +642,227 @@ body { background: var(--bg-primary); color: var(--text-primary); min-height: 10
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .modal-footer { padding-bottom: calc(var(--sp-16) + env(safe-area-inset-bottom)); }
 }
+/* ===== ОПТИМИЗИРОВАННЫЕ СТИЛИ ДЛЯ СТРУКТУРЫ ===== */
+
+/* Изоляция перерисовки — каждая карточка перерисовывается отдельно */
+.ios-faculty-card,
+.ios-direction-card,
+.ios-group-card,
+.ios-subgroup-card {
+  contain: layout style paint;
+  will-change: transform;
+}
+
+/* Убираем тяжёлый backdrop-filter с вложенных карточек */
+.ios-direction-card,
+.ios-group-card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Оптимизированная анимация раскрытия */
+.ios-card-children-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.ios-card-children-wrapper.expanded {
+  grid-template-rows: 1fr;
+}
+
+.ios-card-children-wrapper > * {
+  overflow: hidden;
+}
+
+/* Индикатор раскрытия с GPU анимацией */
+.ios-expand-indicator {
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+.ios-expand-indicator.expanded {
+  transform: rotate(0deg);
+}
+
+/* Отключаем hover эффекты на мобилках для производительности */
+@media (hover: none) {
+  .ios-faculty-card:hover,
+  .ios-direction-card:hover,
+  .ios-group-card:hover,
+  .ios-subgroup-card:hover {
+    transform: none !important;
+    box-shadow: inherit !important;
+  }
+  
+  .ios-action-btn:hover {
+    transform: none !important;
+    background: inherit !important;
+  }
+}
+
+/* Уменьшаем сложность анимаций на слабых устройствах */
+@media (prefers-reduced-motion: reduce) {
+  .ios-card-children-wrapper {
+    transition: none;
+  }
+  
+  .ios-expand-indicator {
+    transition: none;
+  }
+  
+  .ios-faculty-card,
+  .ios-direction-card,
+  .ios-group-card {
+    transition: none;
+  }
+}
+
+/* Оптимизация для touch устройств */
+.ios-card-header {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Убираем анимацию при активном нажатии */
+.ios-card-header:active::after {
+  transition: none;
+}
+
+/* Оптимизированные иконки — используем GPU */
+.ios-icon-circle {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Упрощаем тени для производительности */
+.ios-faculty-card {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  .ios-faculty-card {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* Отложенный рендеринг для невидимых элементов */
+.ios-card-children-wrapper:not(.expanded) .ios-card-children {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.ios-card-children-wrapper.expanded .ios-card-children {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* Оптимизация списков */
+.ios-directions-list,
+.ios-groups-list,
+.ios-subgroups-list {
+  contain: layout style;
+}
+
+/* Упрощаем border-radius для производительности на мобилках */
+@media (max-width: 480px) {
+  .ios-icon-circle {
+    border-radius: 50%;
+  }
+  
+  .ios-faculty-card,
+  .ios-direction-card,
+  .ios-group-card {
+    border-radius: 16px;
+  }
+}
+
+/* Фиксим дёргание при скролле */
+.ios-structure-tree {
+  -webkit-overflow-scrolling: touch;
+  overflow-anchor: none;
+}
+
+/* Оптимизация для списка расписания */
+.schedule-list {
+  contain: layout style;
+}
+
+.schedule-item {
+  contain: layout style paint;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Плавный hover только на десктопе */
+@media (hover: hover) and (pointer: fine) {
+  .schedule-item {
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  
+  .schedule-item:hover {
+    transform: translateX(4px);
+  }
+}
+
+/* Убираем transition на мобилках */
+@media (hover: none) {
+  .schedule-item {
+    transition: none;
+  }
+  
+  .schedule-item:active {
+    background: var(--fill-tertiary);
+  }
+}
+
+/* Оптимизация поиска */
+.ios-search-bar {
+  will-change: transform, box-shadow;
+  transform: translateZ(0);
+}
+
+/* Уменьшаем blur на слабых устройствах */
+@supports (backdrop-filter: blur(10px)) {
+  @media (max-width: 768px) {
+    .ios-search-bar {
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+    }
+    
+    .ios-faculty-card {
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+    }
+  }
+}
+
+/* Фикс для Safari — избегаем reflow */
+.ios-card-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.ios-card-title {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Оптимизация FAB кнопки */
+.ios-fab {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+@media (hover: none) {
+  .ios-fab:hover {
+    transform: none;
+  }
+  
+  .ios-fab:active {
+    transform: scale(0.95);
+  }
+}
